@@ -15,7 +15,7 @@ class TaskListCreate(generics.ListCreateAPIView):
 
     def get_queryset(self):
         user = self.request.user        
-        return Note.objects.filter(author=user)
+        return Task.objects.filter(author=user)
 
     def perform_create(self, serializer):
         if serializer.is_valid():
@@ -25,19 +25,19 @@ class TaskListCreate(generics.ListCreateAPIView):
     
 class TaskDelete(generics.DestroyAPIView):
     """
-    API endpoint that allows deletion of a note.
+    API endpoint that allows deletion of a task.
     
-    This view provides a DELETE method to remove a specific note by its ID.
+    This view provides a DELETE method to remove a specific task by its ID.
     Accessible only to authenticated users.
     
-    API view to delete a note.
+    API view to delete a task.
     """
     serializer_class = TaskSerializer
     permission_classes = [IsAuthenticated]  # Ensure the user is authenticated to access this view
 
     def get_queryset(self):
         user = self.request.user        
-        return Note.objects.filter(author=user)
+        return Task.objects.filter(author=user)
 
 class CreateUserView(generics.CreateAPIView):
     """
