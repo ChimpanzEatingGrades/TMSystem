@@ -22,7 +22,16 @@ class TaskListCreate(generics.ListCreateAPIView):
             serializer.save(author=self.request.user)
         else:
             print(serializer.errors)
+
+class TaskDetailUpdateDelete(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = TaskSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Task.objects.filter(author=self.request.user)
     
+
+#redundant, but kept for clarity    
 class TaskDelete(generics.DestroyAPIView):
     """
     API endpoint that allows deletion of a task.
