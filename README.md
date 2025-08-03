@@ -19,12 +19,12 @@ Open a second bash terminal, also from the TMSYSTEM directory:
 Sample pictures from the website:
 
 Registration:
-![alt text](./assets/image.png)
+![alt text](image.png)
 Users can create accounts here.
 
 Login:
-![alt text](./assets/image-1.png)
+![alt text](image-1.png)
 Users will login to their accounts here.
 
-![alt text](./assets/image-2.png)
-Users can view, create, and delete their tasks here.
+![alt text](image-2.png)
+Users can create, read, update, and delete their tasks here.

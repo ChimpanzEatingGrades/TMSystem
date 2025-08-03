@@ -1,35 +1,160 @@
-@import "tailwindcss";
-
 .task-container {
-    padding: 10px;
-    margin: 20px 0;
-    border: 1px solid #ccc;
-    border-radius: 5px;
+  border: 1px solid #e5e7eb;
+  padding: 20px;
+  margin: 12px 0;
+  border-radius: 8px;
+  background-color: #ffffff;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease-in-out;
+}
+
+.task-container:hover {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.task-container.editing {
+  background-color: #fef3c7;
+  border-color: #f59e0b;
+  box-shadow: 0 4px 6px -1px rgba(245, 158, 11, 0.1);
+}
+
+.task-title {
+  font-weight: 600;
+  font-size: 1.25rem;
+  margin-bottom: 8px;
+  color: #1f2937;
+  line-height: 1.4;
+}
+
+.task-content {
+  margin-bottom: 12px;
+  line-height: 1.6;
+  color: #4b5563;
+  white-space: pre-wrap;
+}
+
+.task-date {
+  color: #6b7280;
+  font-size: 0.875rem;
+  margin-bottom: 16px;
+  font-style: italic;
+}
+
+.task-buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.edit-button,
+.save-button {
+  background-color: #10b981;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: background-color 0.2s ease-in-out;
+}
+
+.edit-button:hover,
+.save-button:hover {
+  background-color: #059669;
+}
+
+.delete-button {
+  background-color: #ef4444;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: background-color 0.2s ease-in-out;
+}
+
+.delete-button:hover {
+  background-color: #dc2626;
+}
+
+.cancel-button {
+  background-color: #6b7280;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: background-color 0.2s ease-in-out;
+}
+
+.cancel-button:hover {
+  background-color: #4b5563;
+}
+
+.edit-title-input {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 12px;
+  border: 2px solid #d1d5db;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 1.25rem;
+  background-color: white;
+  transition: border-color 0.2s ease-in-out;
+}
+
+.edit-title-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.edit-content-textarea {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 12px;
+  border: 2px solid #d1d5db;
+  border-radius: 6px;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.6;
+  background-color: white;
+  transition: border-color 0.2s ease-in-out;
+}
+
+.edit-content-textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.tasks-list {
+  max-width: 800px;
+}
+
+.create-task-section {
+  max-width: 600px;
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+/* Responsive design */
+@media (max-width: 640px) {
+  .task-buttons {
+    flex-direction: column;
   }
-  
-  .task-title {
-    color: #333;
+
+  .edit-button,
+  .save-button,
+  .delete-button,
+  .cancel-button {
+    width: 100%;
+    justify-content: center;
   }
-  
-  .task-content {
-    color: #666;
-  }
-  
-  .task-date {
-    color: #999;
-    font-size: 0.8rem;
-  }
-  
-  .delete-button {
-    background-color: #f44336; /* Red */
-    color: white;
-    border: none;
-    padding: 10px 20px;
-    border-radius: 5px;
-    cursor: pointer;
-    transition: background-color 0.3s;
-  }
-  
-  .delete-button:hover {
-    background-color: #d32f2f; /* Darker red */
-  }
+}
