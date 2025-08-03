@@ -51,50 +51,54 @@ function Home() {
 
 
   return (
-    <div>
-      
+    <div className="relative min-h-screen p-4">
+      {/* Logout link */}
+      <a
+        href="/logout"
+        className="absolute top-4 end-4 text-blue-600 hover:text-blue-800 font-semibold"
+      >
+        Logout
+      </a>
+  
+      {/* Page content */}
       <div>
-
         <h1>Tasks</h1>
-
         {tasks.map((task) => (
           <Task task={task} key={task.id} onDelete={deleteTask} />
-          
         ))}
-
       </div>
-
+  
       <h2>Create a Task</h2>
-
+  
       <form onSubmit={createTask}>
         <label htmlFor="title">Title:</label>
         <br />
-        <input 
-          type="text" 
-          id="title" 
-          name="title" 
-          value = {title}
-          required 
-          onChange={(e) => setTitle(e.target.value)} 
+        <input
+          type="text"
+          id="title"
+          name="title"
+          value={title}
+          required
+          onChange={(e) => setTitle(e.target.value)}
         />
         <br />
-        <textarea 
+        <textarea
           rows="4"
           cols="50"
           placeholder="Enter task content here"
-          type="text" 
-          id="content" 
-          name="content" 
-          value = {content}
-          required 
-          onChange={(e) => setContent(e.target.value)} 
+          type="text"
+          id="content"
+          name="content"
+          value={content}
+          required
+          onChange={(e) => setContent(e.target.value)}
         />
         <br />
         <input type="submit" value="Submit" />
       </form>
-
     </div>
   );
+  
 }
 
 export default Home;
