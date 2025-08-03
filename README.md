@@ -7,11 +7,13 @@ HOW TO RUN:
 In your bash terminal, from the TMSYSTEM directory:
 
 %cd backend
+
 %python manage.py runserver
 
 Open a second bash terminal, also from the TMSYSTEM directory:
 
 %cd frontend
+
 %npm run dev
 
 Sample pictures from the website:
