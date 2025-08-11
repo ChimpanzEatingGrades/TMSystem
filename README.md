@@ -29,5 +29,3 @@ Users will login to their accounts here.
 Home:
 <img width="1367" height="908" alt="image" src="https://github.com/user-attachments/assets/be3bff28-7fb9-4654-9733-a8ea0ddb12a4" />
 Users can create, read, update, and delete their tasks here.
-
-Test 123 Jajajajajapopopoy
