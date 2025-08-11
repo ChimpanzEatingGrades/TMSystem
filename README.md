@@ -1,5 +1,3 @@
-test "im a fag" 
-
 ###This is a Task Management System.
 
 Users can create accounts, sign in, create, view, and delete tasks.
