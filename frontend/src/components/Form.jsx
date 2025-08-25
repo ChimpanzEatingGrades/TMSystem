@@ -5,6 +5,7 @@ import api from "../api"
 import { useNavigate } from "react-router-dom"
 import { ACCESS_TOKEN, REFRESH_TOKEN } from "../constants"
 import LoadingIndicator from "./LoadingIndicator"
+import Navbar from "./Navbar"
 
 function Form({ route, method }) {
   const [username, setUsername] = useState("")
@@ -39,6 +40,8 @@ function Form({ route, method }) {
   }
 
   return (
+    <div>
+    <Navbar />
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Header */}
@@ -195,6 +198,7 @@ function Form({ route, method }) {
           <p>© 2024 Task Manager. Secure and reliable task management.</p>
         </div>
       </div>
+    </div>
     </div>
   )
 }

@@ -2,10 +2,11 @@
 
 import { useState } from "react"
 import { MapPin, Phone, Mail, Share2 } from "lucide-react"
-import KapImg1 from "./assets/images/KapImg1.jpg";
-import KapImg2 from "./assets/images/KapImg2.jpg";
-import KapImg3 from "./assets/images/KapImg3.jpg";
-import ".styles/About.css"
+import KapImg1 from "../assets/images/KapImg1.jpg";
+import KapImg2 from "../assets/images/KapImg2.jpg";
+import KapImg3 from "../assets/images/KapImg3.jpg";
+import Navbar from "../components/Navbar";
+import "../styles/About.css"
 
 const About = () => {
   const [hoveredItem, setHoveredItem] = useState(null)
@@ -38,7 +39,10 @@ const About = () => {
   ]
 
   return (
+    <div>
+      <Navbar />
     <div className="about-page">
+      
       <div className="container">
         <div className="Logo"></div>
         <h1 className="main-title">SERVED EVERY DAY SINCE 2022</h1>
@@ -84,6 +88,7 @@ const About = () => {
             <div className="image-3"><img src={KapImg3} alt="Kapitan Sisig Image3" className="kapimg3" /></div>
           </div>
       </div>
+    </div>
     </div>
   )
 }
