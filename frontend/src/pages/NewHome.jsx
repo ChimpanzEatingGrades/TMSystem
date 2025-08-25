@@ -1,11 +1,10 @@
+
+
 "use client"
 
 import { useState, useEffect } from "react"
-import { useNavigate } from "react-router-dom"
 import api from "../api"
 import Task from "../components/Task"
-import Navbar from "../components/Navbar"
-import { ACCESS_TOKEN } from "../constants"
 
 function Home() {
   const [tasks, setTasks] = useState([])
@@ -14,16 +13,10 @@ function Home() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [isCreating, setIsCreating] = useState(false)
-  const navigate = useNavigate()
 
   useEffect(() => {
-    const token = localStorage.getItem(ACCESS_TOKEN)
-    if (!token) {
-      navigate("/login")
-      return
-    }
     getTasks()
-  }, [navigate])
+  }, [])
 
   const getTasks = () => {
     setLoading(true)
@@ -88,19 +81,23 @@ function Home() {
   }
 
   return (
-    <div>
-    <Navbar />
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
-      
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        {/* Welcome Header */}
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent mb-4">
-            Task Management Dashboard
+      {/* Header */}
+      <div className="sticky top-0 z-10 bg-gray-900/80 backdrop-blur-sm border-b border-gray-700">
+        <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+            Task Manager
           </h1>
-          <p className="text-gray-400">Organize your work and boost your productivity</p>
+          <a
+            href="/logout"
+            className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg transition-all duration-200 border border-gray-600 hover:border-gray-500"
+          >
+            Logout
+          </a>
         </div>
+      </div>
 
+      <div className="max-w-6xl mx-auto px-4 py-8">
         {/* Tasks Section */}
         <div className="mb-12">
           <div className="flex items-center justify-between mb-8">
@@ -229,8 +226,8 @@ function Home() {
         </div>
       </div>
     </div>
-    </div>
   )
 }
 
 export default Home
+
