@@ -5,7 +5,7 @@ import { MapPin, Phone, Mail, Share2 } from "lucide-react"
 import KapImg1 from "./assets/images/KapImg1.jpg";
 import KapImg2 from "./assets/images/KapImg2.jpg";
 import KapImg3 from "./assets/images/KapImg3.jpg";
-import "./About.css"
+import ".styles/About.css"
 
 const About = () => {
   const [hoveredItem, setHoveredItem] = useState(null)
