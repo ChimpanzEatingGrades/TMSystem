@@ -53,33 +53,33 @@ function Task({ task, onDelete, onUpdate }) {
 
   if (isEditing) {
     return (
-      <div className="bg-gradient-to-r from-amber-900/20 to-orange-900/20 border border-amber-700/50 rounded-xl p-6 backdrop-blur-sm">
+      <div className="bg-yellow-50 border-2 border-[#FFC601] rounded-xl p-6">
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-amber-300 mb-2">Title</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Title</label>
             <input
               type="text"
               value={editTitle}
               onChange={(e) => setEditTitle(e.target.value)}
-              className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+              className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg text-black placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFC601] focus:border-transparent"
               placeholder="Task title"
               disabled={isUpdating}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-amber-300 mb-2">Description</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
             <textarea
               value={editContent}
               onChange={(e) => setEditContent(e.target.value)}
-              className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent resize-none"
+              className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg text-black placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FFC601] focus:border-transparent resize-none"
               placeholder="Task description"
               rows="3"
               disabled={isUpdating}
             />
           </div>
 
-          <div className="text-xs text-gray-400 flex items-center">
+          <div className="text-xs text-gray-500 flex items-center">
             <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 strokeLinecap="round"
@@ -95,7 +95,7 @@ function Task({ task, onDelete, onUpdate }) {
             <button
               onClick={handleSave}
               disabled={isUpdating || !editTitle.trim() || !editContent.trim()}
-              className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 flex items-center justify-center"
+              className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 flex items-center justify-center"
             >
               {isUpdating ? (
                 <>
@@ -114,7 +114,7 @@ function Task({ task, onDelete, onUpdate }) {
             <button
               onClick={handleCancel}
               disabled={isUpdating}
-              className="flex-1 bg-gray-600 hover:bg-gray-700 disabled:bg-gray-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 flex items-center justify-center"
+              className="flex-1 bg-gray-500 hover:bg-gray-600 disabled:bg-gray-400 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 flex items-center justify-center"
             >
               <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -128,15 +128,15 @@ function Task({ task, onDelete, onUpdate }) {
   }
 
   return (
-    <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl p-6 hover:bg-gray-800/70 transition-all duration-200 group">
+    <div className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all duration-200 group">
       <div className="flex justify-between items-start mb-4">
-        <h3 className="text-xl font-semibold text-white group-hover:text-blue-300 transition-colors duration-200">
+        <h3 className="text-xl font-semibold text-black group-hover:text-gray-700 transition-colors duration-200">
           {task.title}
         </h3>
         <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
           <button
             onClick={() => setIsEditing(true)}
-            className="p-2 text-gray-400 hover:text-blue-400 hover:bg-blue-900/20 rounded-lg transition-all duration-200"
+            className="p-2 text-gray-400 hover:text-[#FFC601] hover:bg-yellow-50 rounded-lg transition-all duration-200"
             title="Edit task"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -151,11 +151,11 @@ function Task({ task, onDelete, onUpdate }) {
           <button
             onClick={handleDelete}
             disabled={isDeleting}
-            className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-900/20 rounded-lg transition-all duration-200 disabled:opacity-50"
+            className="p-2 text-gray-400 hover:text-[#DD7373] hover:bg-red-50 rounded-lg transition-all duration-200 disabled:opacity-50"
             title="Delete task"
           >
             {isDeleting ? (
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-400"></div>
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#DD7373]"></div>
             ) : (
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -170,9 +170,9 @@ function Task({ task, onDelete, onUpdate }) {
         </div>
       </div>
 
-      <p className="text-gray-300 leading-relaxed mb-4 whitespace-pre-wrap">{task.content}</p>
+      <p className="text-gray-600 leading-relaxed mb-4 whitespace-pre-wrap">{task.content}</p>
 
-      <div className="flex items-center justify-between text-sm text-gray-400">
+      <div className="flex items-center justify-between text-sm text-gray-500">
         <div className="flex items-center">
           <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
@@ -187,14 +187,14 @@ function Task({ task, onDelete, onUpdate }) {
         <div className="flex gap-2">
           <button
             onClick={() => setIsEditing(true)}
-            className="px-3 py-1 text-xs bg-blue-900/30 text-blue-300 rounded-full hover:bg-blue-900/50 transition-all duration-200"
+            className="px-3 py-1 text-xs bg-yellow-100 text-[#FFC601] rounded-full hover:bg-yellow-200 transition-all duration-200"
           >
             Edit
           </button>
           <button
             onClick={handleDelete}
             disabled={isDeleting}
-            className="px-3 py-1 text-xs bg-red-900/30 text-red-300 rounded-full hover:bg-red-900/50 transition-all duration-200 disabled:opacity-50"
+            className="px-3 py-1 text-xs bg-red-100 text-[#DD7373] rounded-full hover:bg-red-200 transition-all duration-200 disabled:opacity-50"
           >
             {isDeleting ? "Deleting..." : "Delete"}
           </button>
