@@ -96,7 +96,7 @@ function Home() {
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold text-black mb-4">Task Management Dashboard</h1>
           <p className="text-gray-600">Organize your work and boost your productivity</p>
-          <a className="text-lg text-black-500 mt-2 block" target="_blank" href="http://127.0.0.1:8000/admin/">Manage Users</a>
+          <a className="text-lg text-black-500 mt-2 block bg-yellow-100" target="_blank" href="http://127.0.0.1:8000/admin/">Manage Users</a>
         </div>
 
         {/* Tasks Section */}
