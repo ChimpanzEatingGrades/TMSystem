@@ -4,6 +4,7 @@ import Login from "./pages/Login"
 import Register from "./pages/Register"
 import Home from "./pages/Home"
 import About from "./pages/About"
+import Inventory from "./pages/inventory"
 import LandingPage from "./pages/LandingPage"
 import NotFound from "./pages/NotFound"
 import ProtectedRoute from "./components/ProtectedRoute"
@@ -28,6 +29,12 @@ function App() {
         <Route path="/register" element={<RegisterAndLogout />} />
         <Route path="/logout" element={<Logout />} />
         <Route path="/about" element={<About />} />
+        <Route path="/inventory" element={
+            <ProtectedRoute>
+              <Inventory />
+            </ProtectedRoute>
+          }
+        />
         <Route path="/" element={<LandingPage />} />
         <Route path="/tasks" element={<ProtectedRoute><Home /></ProtectedRoute>} />
         <Route path="*" element={<NotFound />} />

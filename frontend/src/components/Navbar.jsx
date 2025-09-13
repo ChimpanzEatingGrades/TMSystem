@@ -76,6 +76,18 @@ const Navbar = () => {
                 <Info size={16} />
                 <span>About</span>
               </button>
+              {isAuthenticated && (
+                <button
+                  onClick={() => handleNavigation("/inventory")}
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center space-x-1 ${
+                    isActive("/inventory") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
+                  }`}
+                >
+                  <Info size={16} />
+                  <span>Inventory</span>
+                </button>
+              )}
+
 
               {isAuthenticated && (
                 <button
@@ -154,6 +166,17 @@ const Navbar = () => {
               <Info size={16} />
               <span>About</span>
             </button>
+            {isAuthenticated && (
+              <button
+                onClick={() => handleNavigation("/inventory")}
+                className={`block px-3 py-2 rounded-md text-base font-medium w-full text-left transition-colors duration-200 flex items-center space-x-2 ${
+                  isActive("/inventory") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
+                }`}
+              >
+                <Info size={16} />
+                <span>Inventory</span>
+              </button>
+            )}
 
             {isAuthenticated && (
               <button

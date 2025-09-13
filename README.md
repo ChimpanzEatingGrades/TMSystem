@@ -14,6 +14,10 @@ Open a second bash terminal, also from the TMSYSTEM directory:
 
 %cd frontend
 
+%npm install tailwindcss @tailwindcss/vite
+
+%npm install lucide-react
+
 %npm run dev
 
 Sample pictures from the website:
