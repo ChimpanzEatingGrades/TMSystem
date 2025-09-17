@@ -12,7 +12,7 @@ class UnitOfMeasurementSerializer(serializers.ModelSerializer):
 class RawMaterialSerializer(serializers.ModelSerializer):
     class Meta:
         model = RawMaterial
-        fields = ["id", "name", "unit", "cost_per_unit", "created_at"]
+        fields = ["id", "name", "unit", "quantity", "created_at"]
 
 
 # RecipeItem serializer: readable nested raw_material, but writes accept raw_material_id

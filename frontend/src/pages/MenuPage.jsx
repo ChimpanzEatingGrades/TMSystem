@@ -1,142 +1,187 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { MenuItemCard } from "../components/menu-item-card"
-import { MenuItemModal } from "../components/menu-item-modal"
-import { RecipeModal } from "../components/recipe-modal"
-import menuAPI from "../lib/api"
+import { useEffect, useState } from "react";
+import { Plus, Edit, Trash2, List } from "lucide-react";
+import Navbar from "../components/Navbar.jsx";
+import {
+  getMenuItems,
+  deleteMenuItem,
+  getCategories,
+} from "../api/inventoryAPI.js";
+import MenuItemModal from "../components/MenuItems/MenuItemModal.jsx";
+import RecipeModal from "../components/MenuItems/RecipeModal.jsx";
 
 export default function MenuPage() {
-  const [menuItems, setMenuItems] = useState([])
-  const [categories, setCategories] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [isMenuItemModalOpen, setIsMenuItemModalOpen] = useState(false)
-  const [isRecipeModalOpen, setIsRecipeModalOpen] = useState(false)
-  const [selectedMenuItem, setSelectedMenuItem] = useState(null)
-  const [selectedMenuItemForRecipe, setSelectedMenuItemForRecipe] = useState(null)
+  const [menuItems, setMenuItems] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [activeCategory, setActiveCategory] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
+
+  // recipe modal state
+  const [showRecipeModal, setShowRecipeModal] = useState(false);
+  const [selectedRecipeItem, setSelectedRecipeItem] = useState(null);
 
   useEffect(() => {
-    fetchData()
-  }, [])
+    loadData();
+  }, []);
 
-  const fetchData = async () => {
+  const loadData = async () => {
     try {
-      const [menuItemsData, categoriesData] = await Promise.all([menuAPI.getMenuItems(), menuAPI.getCategories()])
+      // Categories
+      const catRes = await getCategories();
+      const catData = catRes.data?.results ?? catRes.data;
+      const cats = Array.isArray(catData) ? catData : [];
+      setCategories(cats);
 
-      setMenuItems(menuItemsData)
-      setCategories(categoriesData)
-    } catch (error) {
-      console.error("Failed to fetch data", error)
-    } finally {
-      setLoading(false)
+      if (cats.length > 0 && !activeCategory) {
+        setActiveCategory(cats[0].id);
+      }
+
+      // Menu Items
+      const itemRes = await getMenuItems();
+      const itemData = itemRes.data?.results ?? itemRes.data;
+      setMenuItems(Array.isArray(itemData) ? itemData : []);
+    } catch (err) {
+      console.error("Error loading data", err);
     }
-  }
+  };
 
-  const handleAddMenuItem = () => {
-    setSelectedMenuItem(null)
-    setIsMenuItemModalOpen(true)
-  }
+  const handleDelete = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this menu item?")) return;
+    try {
+      await deleteMenuItem(id);
+      loadData();
+    } catch (err) {
+      console.error("Delete failed", err);
+    }
+  };
 
-  const handleEditMenuItem = (item) => {
-    setSelectedMenuItem(item)
-    setIsMenuItemModalOpen(true)
-  }
+  const handleSave = () => {
+    setShowModal(false);
+    setEditingItem(null);
+    loadData(); // reload after save
+  };
 
-  const handleEditRecipe = (item) => {
-    setSelectedMenuItemForRecipe(item)
-    setIsRecipeModalOpen(true)
-  }
-
-  const handleMenuItemSaved = () => {
-    fetchData()
-    setIsMenuItemModalOpen(false)
-    setSelectedMenuItem(null)
-  }
-
-  const handleRecipeSaved = () => {
-    fetchData()
-    setIsRecipeModalOpen(false)
-    setSelectedMenuItemForRecipe(null)
-  }
-
-  const groupedItems = categories.reduce((acc, category) => {
-    acc[category.name] = menuItems.filter((item) => item.category?.id === category.id)
-    return acc
-  }, {})
-
-  // Add uncategorized items
-  const uncategorizedItems = menuItems.filter((item) => !item.category)
-  if (uncategorizedItems.length > 0) {
-    groupedItems["Uncategorized"] = uncategorizedItems
-  }
-
-  if (loading) {
-    return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-lg">Loading menu items...</div>
-        </div>
-      </div>
-    )
-  }
+  const handleRecipeSave = () => {
+    setShowRecipeModal(false);
+    setSelectedRecipeItem(null);
+    loadData();
+  };
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold">Menu Management</h1>
-          <p className="text-gray-600 mt-2">Manage your restaurant menu items and recipes</p>
+    <div className="min-h-screen bg-gray-50">
+      <Navbar />
+
+      <div className="max-w-6xl mx-auto py-12 px-4">
+        <h1 className="text-4xl font-bold text-black mb-8">Menu Items</h1>
+
+        {/* Categories Tabs */}
+        <div className="flex gap-4 mb-8 flex-wrap">
+          {categories.map((cat) => (
+            <button
+              key={cat.id}
+              onClick={() => setActiveCategory(cat.id)}
+              className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+                activeCategory === cat.id
+                  ? "bg-yellow-400 text-black"
+                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+              }`}
+            >
+              {cat.name}
+            </button>
+          ))}
         </div>
-        <button
-          onClick={handleAddMenuItem}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
-        >
-          <span className="text-lg">+</span>
-          Add Menu Item
-        </button>
-      </div>
 
-      <div className="space-y-8">
-        {Object.entries(groupedItems).map(([categoryName, items]) => (
-          <div key={categoryName}>
-            <h2 className="text-2xl font-semibold mb-4">{categoryName}</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {items.map((item) => (
-                <MenuItemCard key={item.id} item={item} onEdit={handleEditMenuItem} onEditRecipe={handleEditRecipe} />
-              ))}
-            </div>
-            {items.length === 0 && <div className="text-center py-8 text-gray-500">No items in this category</div>}
-          </div>
-        ))}
-      </div>
+        {/* Items Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {menuItems
+            .filter(
+              (item) =>
+                !activeCategory || item.category?.id === activeCategory
+            )
+            .map((item) => (
+              <div
+                key={item.id}
+                className="bg-white border border-gray-200 rounded-lg p-6 shadow hover:shadow-lg transition"
+              >
+                <div className="flex justify-between items-start mb-3">
+                  <h3 className="text-xl font-bold text-black">{item.name}</h3>
+                  <span className="text-[#DD7373] font-bold text-lg">
+                    ₱{item.price}
+                  </span>
+                </div>
+                {item.picture && (
+                  <img
+                    src={item.picture}
+                    alt={item.name}
+                    className="w-full h-40 object-cover rounded mb-3"
+                  />
+                )}
+                <p className="text-gray-600 text-sm mb-4">{item.description}</p>
 
-      {Object.keys(groupedItems).length === 0 && (
-        <div className="text-center py-16">
-          <h3 className="text-xl font-semibold mb-2">No menu items yet</h3>
-          <p className="text-gray-600 mb-4">Get started by adding your first menu item</p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setEditingItem(item);
+                      setShowModal(true);
+                    }}
+                    className="flex items-center gap-1 px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                  >
+                    <Edit size={16} /> Edit
+                  </button>
+
+                  <button
+                    onClick={() => handleDelete(item.id)}
+                    className="flex items-center gap-1 px-3 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+                  >
+                    <Trash2 size={16} /> Delete
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setSelectedRecipeItem(item);
+                      setShowRecipeModal(true);
+                    }}
+                    className="flex items-center gap-1 px-3 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+                  >
+                    <List size={16} /> Ingredients
+                  </button>
+                </div>
+              </div>
+            ))}
+
+          {/* Add New Button */}
           <button
-            onClick={handleAddMenuItem}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
+            onClick={() => {
+              setEditingItem(null);
+              setShowModal(true);
+            }}
+            className="flex items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-6 text-gray-500 hover:text-black hover:border-gray-500 transition"
           >
-            Add Menu Item
+            <Plus size={24} className="mr-2" />
+            Add New Item
           </button>
         </div>
+      </div>
+
+      {/* Modal for Add/Edit menu item */}
+      {showModal && (
+        <MenuItemModal
+          onClose={() => setShowModal(false)}
+          onSave={handleSave}
+          editingItem={editingItem}
+        />
       )}
 
-      <MenuItemModal
-        isOpen={isMenuItemModalOpen}
-        onClose={() => setIsMenuItemModalOpen(false)}
-        onSave={handleMenuItemSaved}
-        menuItem={selectedMenuItem}
-        categories={categories}
-      />
-
-      <RecipeModal
-        isOpen={isRecipeModalOpen}
-        onClose={() => setIsRecipeModalOpen(false)}
-        onSave={handleRecipeSaved}
-        menuItem={selectedMenuItemForRecipe}
-      />
+      {/* Modal for Recipe/Ingredients */}
+      {showRecipeModal && (
+        <RecipeModal
+          onClose={() => setShowRecipeModal(false)}
+          onSave={handleRecipeSave}
+          menuItem={selectedRecipeItem}
+        />
+      )}
     </div>
-  )
+  );
 }

@@ -4,7 +4,7 @@ from .models import RawMaterial, Recipe, RecipeItem, MenuCategory, MenuItem
 
 @admin.register(RawMaterial)
 class RawMaterialAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "unit", "cost_per_unit")
+    list_display = ("id", "name", "unit", "quantity")
     search_fields = ("name",)
 
 

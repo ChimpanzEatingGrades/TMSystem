@@ -10,19 +10,29 @@ export default function RecipeModal({ onClose, existingRecipe, onSave }) {
   const [yieldUom, setYieldUom] = useState(existingRecipe?.yield_uom || "pcs");
 
   useEffect(() => {
-    getRawMaterials().then(data => setRawMaterials(data)); // ✅ no `.data`
+    const loadRawMaterials = async () => {
+      try {
+        const res = await getRawMaterials();
+        const data = res.data?.results ?? res.data; // works for paginated or not
+        setRawMaterials(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error("Failed to load raw materials", err);
+        setRawMaterials([]);
+      }
+    };
+    loadRawMaterials();
   }, []);
 
   const handleAdd = (material) => {
-    if (!selected.find(item => item.raw_material === material.id)) {
+    if (!selected.find((item) => item.raw_material === material.id)) {
       setSelected([...selected, { raw_material: material.id, quantity: 1 }]);
     }
   };
 
   const handleChangeQty = (id, qty) => {
     setSelected(
-      selected.map(item =>
-        item.raw_material === id ? { ...item, quantity: qty } : item
+      selected.map((item) =>
+        item.raw_material === id ? { ...item, quantity: Number(qty) } : item
       )
     );
   };
@@ -33,65 +43,79 @@ export default function RecipeModal({ onClose, existingRecipe, onSave }) {
       description,
       yield_quantity: yieldQty,
       yield_uom: yieldUom,
-      items: selected
+      items: selected,
     };
 
-    let recipe;
-    if (existingRecipe?.id) {
-      recipe = await updateRecipe(existingRecipe.id, payload); // ✅ no `.data`
-    } else {
-      recipe = await createRecipe(payload); // ✅ no `.data`
-    }
+    try {
+      let recipe;
+      if (existingRecipe?.id) {
+        const res = await updateRecipe(existingRecipe.id, payload);
+        recipe = res.data ?? res; // normalize axios response
+      } else {
+        const res = await createRecipe(payload);
+        recipe = res.data ?? res;
+      }
 
-    onSave(recipe);
-    onClose();
+      onSave(recipe);
+      onClose();
+    } catch (err) {
+      console.error("Save failed", err);
+    }
   };
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center">
-      <div className="bg-white rounded-lg w-[400px] p-6 space-y-4">
+      <div className="bg-white rounded-lg w-[400px] p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <h2 className="text-lg font-bold">Edit Ingredients</h2>
 
+        {/* Recipe Info */}
         <input
           type="text"
           value={recipeName}
-          onChange={e => setRecipeName(e.target.value)}
+          onChange={(e) => setRecipeName(e.target.value)}
           placeholder="Recipe Name"
           className="w-full border p-2 rounded"
         />
         <textarea
           value={description}
-          onChange={e => setDescription(e.target.value)}
+          onChange={(e) => setDescription(e.target.value)}
           placeholder="Description"
           className="w-full border p-2 rounded"
         />
 
+        {/* Yield */}
         <div className="flex gap-2">
           <input
             type="number"
             value={yieldQty}
-            onChange={e => setYieldQty(e.target.value)}
+            onChange={(e) => setYieldQty(Number(e.target.value))}
             className="border p-2 rounded w-20"
           />
           <input
             type="text"
             value={yieldUom}
-            onChange={e => setYieldUom(e.target.value)}
+            onChange={(e) => setYieldUom(e.target.value)}
             className="border p-2 rounded w-20"
             placeholder="UOM"
           />
         </div>
 
+        {/* Selected Ingredients */}
         <div className="space-y-2">
-          {selected.map(item => {
-            const material = rawMaterials.find(m => m.id === item.raw_material);
+          {selected.map((item) => {
+            const material = rawMaterials.find((m) => m.id === item.raw_material);
             return (
-              <div key={item.raw_material} className="flex justify-between items-center border p-2 rounded">
+              <div
+                key={item.raw_material}
+                className="flex justify-between items-center border p-2 rounded"
+              >
                 <span>{material?.name || "Unknown"}</span>
                 <input
                   type="number"
                   value={item.quantity}
-                  onChange={e => handleChangeQty(item.raw_material, e.target.value)}
+                  onChange={(e) =>
+                    handleChangeQty(item.raw_material, e.target.value)
+                  }
                   className="w-16 border p-1 rounded"
                 />
               </div>
@@ -99,9 +123,10 @@ export default function RecipeModal({ onClose, existingRecipe, onSave }) {
           })}
         </div>
 
+        {/* Available Raw Materials to Add */}
         <h3 className="font-medium mt-4">Add Ingredient</h3>
         <div className="space-y-1 max-h-32 overflow-y-auto">
-          {rawMaterials.map(material => (
+          {rawMaterials.map((material) => (
             <button
               key={material.id}
               onClick={() => handleAdd(material)}
@@ -112,9 +137,18 @@ export default function RecipeModal({ onClose, existingRecipe, onSave }) {
           ))}
         </div>
 
+        {/* Actions */}
         <div className="flex justify-end gap-2 mt-4">
-          <button onClick={onClose} className="px-4 py-2 bg-gray-300 rounded">Close</button>
-          <button onClick={handleSubmit} className="px-4 py-2 bg-green-500 text-white rounded">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-gray-300 rounded"
+          >
+            Close
+          </button>
+          <button
+            onClick={handleSubmit}
+            className="px-4 py-2 bg-green-500 text-white rounded"
+          >
             Save
           </button>
         </div>

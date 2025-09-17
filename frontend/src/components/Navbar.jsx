@@ -88,6 +88,17 @@ const Navbar = () => {
                 </button>
               )}
 
+            {isAuthenticated && (
+                <button
+                  onClick={() => handleNavigation("/menu")}
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center space-x-1 ${
+                    isActive("/menu") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
+                  }`}
+                >
+                  <Info size={16} />
+                  <span>Menu</span>
+                </button>
+              )}
 
               {isAuthenticated && (
                 <button
