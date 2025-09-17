@@ -1,11 +1,13 @@
 const API_BASE_URL =
   typeof window !== "undefined"
     ? `${window.location.protocol}//${window.location.hostname}:8000`
-    : "http://localhost:5173"
+    : "http://localhost:8000"
 
 class MenuAPI {
   async request(endpoint, options = {}) {
     const url = `${API_BASE_URL}/api${endpoint}`
+    console.log("[v0] Making API request to:", url)
+
     const config = {
       headers: {
         "Content-Type": "application/json",
@@ -23,12 +25,23 @@ class MenuAPI {
       const response = await fetch(url, config)
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        console.error("[v0] API request failed:", {
+          url,
+          status: response.status,
+          statusText: response.statusText,
+          endpoint,
+        })
+        throw new Error(`HTTP error! status: ${response.status} for ${endpoint}`)
       }
 
-      return await response.json()
+      const data = await response.json()
+      console.log("[v0] API request successful:", endpoint, data)
+      return data
     } catch (error) {
       console.error("API request failed:", error)
+      if (error.message.includes("404")) {
+        console.error("[v0] 404 Error - Check if Django server is running on port 8000 and endpoints exist")
+      }
       throw error
     }
   }
