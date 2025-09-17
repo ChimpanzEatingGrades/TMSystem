@@ -4,7 +4,7 @@ import Login from "./pages/Login"
 import Register from "./pages/Register"
 import Home from "./pages/Home"
 import About from "./pages/About"
-import Inventory from "./pages/inventory"
+import Inventory from "./pages/Inventory"
 import LandingPage from "./pages/LandingPage"
 import NotFound from "./pages/NotFound"
 import ProtectedRoute from "./components/ProtectedRoute"
@@ -31,15 +31,11 @@ function App() {
         <Route path="/register" element={<RegisterAndLogout />} />
         <Route path="/logout" element={<Logout />} />
         <Route path="/about" element={<About />} />
-        <Route path="/inventory" element={
-            <ProtectedRoute>
-              <Inventory />
-            </ProtectedRoute>
-          }
+        <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>}
         />
-        <Route path="/menu" element={<MenuPage />} />
-        <Route path="/menu/new" element={<MenuFormPage />} />
-        <Route path="/menu/:id/edit" element={<MenuFormPage />} />
+        <Route path="/menu" element={<ProtectedRoute><MenuPage /></ProtectedRoute>} />
+        <Route path="/menu/new" element={<ProtectedRoute><MenuFormPage /></ProtectedRoute>} />
+        <Route path="/menu/:id/edit" element={<ProtectedRoute><MenuFormPage /></ProtectedRoute>} />
         <Route path="/" element={<LandingPage />} />
         <Route path="/tasks" element={<ProtectedRoute><Home /></ProtectedRoute>} />
         <Route path="*" element={<NotFound />} />

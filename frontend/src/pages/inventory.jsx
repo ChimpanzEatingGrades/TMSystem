@@ -1,6 +1,6 @@
 "use client"
 import { useState, useEffect } from "react"
-import api from "../api" // this already injects Bearer token
+import api from "../api"
 import Navbar from "../components/Navbar"
 import PurchaseOrderModal from "../components/PurchaseOrderModal"
 import UnitManagementModal from "../components/UnitManagementModal"
@@ -11,40 +11,50 @@ export default function Inventory() {
   const [name, setName] = useState("")
   const [quantity, setQuantity] = useState("")
   const [unit, setUnit] = useState("kg")
+  const [units, setUnits] = useState([])
   const [error, setError] = useState("")
   const [showPurchaseModal, setShowPurchaseModal] = useState(false)
   const [showUnitModal, setShowUnitModal] = useState(false)
-  const [units, setUnits] = useState([])
+  const [purchaseOrders, setPurchaseOrders] = useState([])
 
-  // Load materials and units on mount
+  // Load initial data
   useEffect(() => {
     fetchMaterials()
     fetchUnits()
+    fetchPurchaseOrders()
   }, [])
 
+  // Fetch functions
   const fetchMaterials = async () => {
     try {
       const res = await api.get("/inventory/rawmaterials/")
-      console.log("Raw materials fetched:", res.data)
       setMaterials(res.data)
     } catch (err) {
-      console.error("Failed to fetch materials", err)
-      setError("Could not fetch materials. Please login first.")
+      console.error(err)
+      setError("Failed to fetch materials. Please login first.")
     }
   }
 
   const fetchUnits = async () => {
     try {
-      console.log("Fetching units...")
       const res = await api.get("/inventory/units/")
-      console.log("Units response:", res.data)
       setUnits(res.data)
     } catch (err) {
-      console.error("Failed to fetch units", err)
+      console.error(err)
     }
   }
 
-  const handleAdd = async (e) => {
+  const fetchPurchaseOrders = async () => {
+    try {
+      const res = await api.get("/inventory/purchase-orders/")
+      setPurchaseOrders(res.data)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  // Raw material actions
+  const handleAddMaterial = async (e) => {
     e.preventDefault()
     try {
       const res = await api.post("/inventory/rawmaterials/", {
@@ -52,36 +62,43 @@ export default function Inventory() {
         quantity,
         unit,
       })
-      setMaterials([...materials, res.data])
+      setMaterials(prev => [...prev, res.data])
       setName("")
       setQuantity("")
       setUnit("kg")
       setError("")
     } catch (err) {
-      console.error("Failed to add material", err)
+      console.error(err)
       setError(
-        `Could not add material. ${err.response?.data?.detail || err.message || "Please check if you're logged in."}`
+        `Could not add material. ${err.response?.data?.detail || err.message}`
       )
     }
   }
 
-  const handleDelete = async (id) => {
+  const handleDeleteMaterial = async (id) => {
     try {
       await api.delete(`/inventory/rawmaterials/${id}/`)
-      setMaterials(materials.filter((m) => m.id !== id))
+      setMaterials(prev => prev.filter(m => m.id !== id))
     } catch (err) {
-      console.error("Delete failed", err)
-      setError("Could not delete material.")
+      console.error(err)
+      setError("Failed to delete material.")
     }
   }
 
-  const handlePurchaseSuccess = () => fetchMaterials()
+  // Called after creating a new purchase order
+  const handlePurchaseSuccess = (newOrder) => {
+    if (newOrder) {
+      setPurchaseOrders(prev => [...prev, newOrder])
+    } else {
+      fetchPurchaseOrders()
+    }
+  }
+
   const handleUnitSuccess = () => fetchUnits()
 
   return (
     <div>
       <Navbar />
-
       <div className="max-w-6xl mx-auto mt-10 p-6 bg-white shadow-lg rounded-xl">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold">Inventory Management</h1>
@@ -103,10 +120,10 @@ export default function Inventory() {
 
         {error && <p className="text-red-500 mb-4">{error}</p>}
 
-        {/* Add Material Form */}
+        {/* Add Material */}
         <div className="mb-8">
           <h2 className="text-xl font-semibold mb-4">Add Raw Material</h2>
-          <form onSubmit={handleAdd} className="flex flex-col md:flex-row gap-4">
+          <form onSubmit={handleAddMaterial} className="flex flex-col md:flex-row gap-4">
             <input
               type="text"
               placeholder="Material Name"
@@ -130,10 +147,8 @@ export default function Inventory() {
               onChange={(e) => setUnit(e.target.value)}
               className="w-32 border p-2 rounded-md"
             >
-              {units.map((u) => (
-                <option key={u.id} value={u.abbreviation}>
-                  {u.abbreviation}
-                </option>
+              {units.map(u => (
+                <option key={u.id} value={u.abbreviation}>{u.abbreviation}</option>
               ))}
             </select>
             <button
@@ -159,16 +174,14 @@ export default function Inventory() {
                 </tr>
               </thead>
               <tbody>
-                {materials.map((mat) => (
+                {materials.map(mat => (
                   <tr key={mat.id} className="hover:bg-gray-50">
                     <td className="p-3 border border-gray-300">{mat.name}</td>
-                    <td className="p-3 border border-gray-300">
-                      {mat.quantity ?? mat.stock?.quantity ?? 0}
-                    </td>
+                    <td className="p-3 border border-gray-300">{mat.quantity ?? mat.stock?.quantity ?? 0}</td>
                     <td className="p-3 border border-gray-300">{mat.unit}</td>
                     <td className="p-3 border border-gray-300">
                       <button
-                        onClick={() => handleDelete(mat.id)}
+                        onClick={() => handleDeleteMaterial(mat.id)}
                         className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm"
                       >
                         Delete
@@ -179,20 +192,19 @@ export default function Inventory() {
               </tbody>
             </table>
           </div>
-
           {materials.length === 0 && !error && (
             <p className="text-center mt-4 text-gray-500">No materials found.</p>
           )}
         </div>
 
         {/* Purchase Orders */}
-        <PurchaseOrderList />
+        <PurchaseOrderList purchaseOrders={purchaseOrders} />
 
         {/* Modals */}
         <PurchaseOrderModal
           isOpen={showPurchaseModal}
           onClose={() => setShowPurchaseModal(false)}
-          onSuccess={handlePurchaseSuccess}
+          onSuccess={handlePurchaseSuccess} // returns new PO
         />
 
         <UnitManagementModal
