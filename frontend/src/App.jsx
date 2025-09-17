@@ -8,6 +8,7 @@ import Inventory from "./pages/inventory"
 import LandingPage from "./pages/LandingPage"
 import NotFound from "./pages/NotFound"
 import ProtectedRoute from "./components/ProtectedRoute"
+import MenuPage from "./pages/MenuPage"
 
 function Logout(){
   localStorage.clear()
@@ -32,6 +33,12 @@ function App() {
         <Route path="/inventory" element={
             <ProtectedRoute>
               <Inventory />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/menupage" element={
+            <ProtectedRoute>
+              <MenuPage />
             </ProtectedRoute>
           }
         />

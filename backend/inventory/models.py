@@ -1,17 +1,86 @@
+# inventory/models.py
+from decimal import Decimal
 from django.db import models
+from django.core.validators import MinValueValidator
+from django.core.exceptions import ValidationError
 
+# ----- RAW MATERIAL (if you already have this, keep your existing version and remove this block) -----
 class RawMaterial(models.Model):
-    UNIT_CHOICES = [
-        ("kg", "Kilograms"),
-        ("g", "Grams"),
-        ("l", "Liters"),
-        ("ml", "Milliliters"),
-        ("pcs", "Pieces"),
-    ]
-
-    name = models.CharField(max_length=100)
-    quantity = models.DecimalField(max_digits=10, decimal_places=2)
-    unit = models.CharField(max_length=10, choices=UNIT_CHOICES, default="pcs")
+    name = models.CharField(max_length=150)
+    unit = models.CharField(max_length=50)  # e.g. "g", "ml", "pcs"
+    cost_per_unit = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.name} ({self.quantity} {self.unit})"
+        return self.name
+# ---------------------------------------------------------------------------------------------------
+
+class Recipe(models.Model):
+    name = models.CharField(max_length=150)
+    description = models.TextField(blank=True)
+    yield_quantity = models.DecimalField(max_digits=10, decimal_places=3, default=Decimal("1.000"), validators=[MinValueValidator(Decimal("0.0001"))])
+    yield_uom = models.CharField(max_length=50, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+class RecipeItem(models.Model):
+    recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE, related_name="items")
+    raw_material = models.ForeignKey(RawMaterial, on_delete=models.PROTECT, related_name="recipe_items")
+    quantity = models.DecimalField(max_digits=12, decimal_places=3, validators=[MinValueValidator(Decimal("0.0001"))])
+
+    class Meta:
+        verbose_name = "Recipe Item"
+        verbose_name_plural = "Recipe Items"
+        unique_together = ("recipe", "raw_material")
+
+    def __str__(self):
+        return f"{self.quantity} {self.raw_material.unit} {self.raw_material.name} for {self.recipe.name}"
+
+
+class MenuCategory(models.Model):
+    name = models.CharField(max_length=120, unique=True)
+
+    class Meta:
+        verbose_name_plural = "Menu Categories"
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+class MenuItem(models.Model):
+    name = models.CharField(max_length=150)
+    price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(Decimal("0.00"))])
+    picture = models.ImageField(upload_to="menu_items/", null=True, blank=True)
+
+    valid_from = models.DateField(null=True, blank=True)
+    valid_until = models.DateField(null=True, blank=True)
+
+    description = models.TextField(blank=True)
+
+    # optional relationships — menu item may link to a recipe and a category
+    recipe = models.ForeignKey(Recipe, on_delete=models.SET_NULL, null=True, blank=True, related_name="menu_items")
+    category = models.ForeignKey(MenuCategory, on_delete=models.SET_NULL, null=True, blank=True, related_name="menu_items")
+
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+        indexes = [models.Index(fields=["name"])]
+
+    def __str__(self):
+        return self.name
+
+    def clean(self):
+        if self.valid_from and self.valid_until and self.valid_until < self.valid_from:
+            raise ValidationError({"valid_until": "valid_until must be on or after valid_from"})
