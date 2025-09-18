@@ -1,5 +1,6 @@
 from decimal import Decimal
 from django.db import models
+from django.db.models.functions import Lower
 from django.core.validators import MinValueValidator
 from django.core.exceptions import ValidationError
 
@@ -35,6 +36,12 @@ class RawMaterial(models.Model):
 
     class Meta:
         ordering = ["name"]
+        constraints = [
+            # Enforce case-insensitive uniqueness on name
+            models.UniqueConstraint(
+                Lower("name"), name="uniq_rawmaterial_name_ci"
+            )
+        ]
 
 
 class Recipe(models.Model):

@@ -14,6 +14,16 @@ class RawMaterialSerializer(serializers.ModelSerializer):
         model = RawMaterial
         fields = ["id", "name", "unit", "quantity", "created_at"]
 
+    def validate_name(self, value: str):
+        # Enforce case-insensitive uniqueness for name
+        name = value.strip()
+        qs = RawMaterial.objects.filter(name__iexact=name)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError("Raw material with this name already exists (case-insensitive).")
+        return name
+
 
 # RecipeItem serializer: readable nested raw_material, but writes accept raw_material_id
 class RecipeItemSerializer(serializers.ModelSerializer):
@@ -151,12 +161,19 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
     def update_inventory(self, purchase_order):
         """Automatically update inventory when a purchase order is created"""
         for item in purchase_order.items.all():
-            # Check if material already exists with same name and unit
-            material, created = RawMaterial.objects.get_or_create(
-                name=item.name,
+            # Case-insensitive match on name, exact match on unit abbreviation
+            material = RawMaterial.objects.filter(
+                name__iexact=item.name,
                 unit=item.unit.abbreviation,
-                defaults={'quantity': 0}
-            )
+            ).first()
+
+            if not material:
+                # Create new material, preserve provided casing
+                material = RawMaterial.objects.create(
+                    name=item.name.strip(),
+                    unit=item.unit.abbreviation,
+                    quantity=0
+                )
             
             # Add the purchased quantity to existing inventory
             material.quantity += item.quantity

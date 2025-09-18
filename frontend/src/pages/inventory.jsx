@@ -72,9 +72,20 @@ export default function Inventory() {
       setError("")
     } catch (err) {
       console.error(err)
-      setError(
-        `Could not add material. ${err.response?.data?.detail || err.message}`
-      )
+      const nameErr = Array.isArray(err.response?.data?.name)
+        ? err.response.data.name[0]
+        : err.response?.data?.name
+      let baseDetail = err.response?.data?.detail || nameErr || err.message
+      if (typeof baseDetail === 'string') {
+        baseDetail = baseDetail.replace(/\s*\(case-insensitive\)\.?/i, '').trim()
+      }
+      const duplicateMsg = nameErr || (typeof baseDetail === 'string' && baseDetail.toLowerCase().includes('exists'))
+        ? 'Invalid input, material already made.'
+        : ''
+      const finalMsg = duplicateMsg
+        ? `${duplicateMsg} ${baseDetail ? `(${baseDetail})` : ''}`.trim()
+        : `Could not add material. ${baseDetail}`
+      setError(finalMsg)
     }
   }
 
