@@ -5,6 +5,7 @@ import Navbar from "../components/Navbar"
 import PurchaseOrderModal from "../components/PurchaseOrderModal"
 import UnitManagementModal from "../components/UnitManagementModal"
 import PurchaseOrderList from "../components/PurchaseOrderList"
+import ErrorBoundary from "../components/ErrorBoundary"
 
 export default function Inventory() {
   const [materials, setMaterials] = useState([])
@@ -16,6 +17,8 @@ export default function Inventory() {
   const [showPurchaseModal, setShowPurchaseModal] = useState(false)
   const [showUnitModal, setShowUnitModal] = useState(false)
   const [purchaseOrders, setPurchaseOrders] = useState([])
+  const [editingMaterial, setEditingMaterial] = useState(null)
+  const [editForm, setEditForm] = useState({ name: "", quantity: "", unit: "" })
 
   // Load initial data
   useEffect(() => {
@@ -30,7 +33,7 @@ export default function Inventory() {
       const res = await api.get("/inventory/rawmaterials/")
       setMaterials(res.data)
     } catch (err) {
-      console.error(err)
+      console.error('Error fetching materials:', err)
       setError("Failed to fetch materials. Please login first.")
     }
   }
@@ -85,21 +88,62 @@ export default function Inventory() {
     }
   }
 
+  const handleEditMaterial = (material) => {
+    setEditingMaterial(material.id)
+    setEditForm({
+      name: material.name,
+      quantity: material.quantity.toString(),
+      unit: material.unit
+    })
+  }
+
+  const handleUpdateMaterial = async (id) => {
+    try {
+      const res = await api.put(`/inventory/rawmaterials/${id}/`, editForm)
+      setMaterials(prev => prev.map(m => m.id === id ? res.data : m))
+      setEditingMaterial(null)
+      setEditForm({ name: "", quantity: "", unit: "" })
+      setError("")
+    } catch (err) {
+      console.error(err)
+      setError(`Failed to update material: ${err.response?.data?.detail || err.message}`)
+    }
+  }
+
+  const handleCancelEdit = () => {
+    setEditingMaterial(null)
+    setEditForm({ name: "", quantity: "", unit: "" })
+  }
+
   // Called after creating a new purchase order
   const handlePurchaseSuccess = (newOrder) => {
-    if (newOrder) {
-      setPurchaseOrders(prev => [...prev, newOrder])
-    } else {
-      fetchPurchaseOrders()
+    try {
+      if (newOrder) {
+        setPurchaseOrders(prev => [newOrder, ...prev])
+      } else {
+        fetchPurchaseOrders()
+      }
+      // Refresh materials list to show updated inventory
+      fetchMaterials()
+    } catch (error) {
+      console.error('Error in handlePurchaseSuccess:', error)
+      setError('Failed to update purchase orders list')
     }
+  }
+
+  // Handle purchase order list changes (e.g., when deleting)
+  const handlePurchaseOrdersChange = (updatedOrders) => {
+    setPurchaseOrders(updatedOrders)
   }
 
   const handleUnitSuccess = () => fetchUnits()
 
+
   return (
-    <div>
-      <Navbar />
-      <div className="max-w-6xl mx-auto mt-10 p-6 bg-white shadow-lg rounded-xl">
+    <ErrorBoundary>
+      <div>
+        <Navbar />
+        <div className="max-w-6xl mx-auto mt-10 p-6 bg-white shadow-lg rounded-xl">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold">Inventory Management</h1>
           <div className="flex space-x-3">
@@ -147,7 +191,7 @@ export default function Inventory() {
               onChange={(e) => setUnit(e.target.value)}
               className="w-32 border p-2 rounded-md"
             >
-              {units.map(u => (
+              {units && units.map(u => (
                 <option key={u.id} value={u.abbreviation}>{u.abbreviation}</option>
               ))}
             </select>
@@ -174,18 +218,81 @@ export default function Inventory() {
                 </tr>
               </thead>
               <tbody>
-                {materials.map(mat => (
+                {materials && materials.map(mat => (
                   <tr key={mat.id} className="hover:bg-gray-50">
-                    <td className="p-3 border border-gray-300">{mat.name}</td>
-                    <td className="p-3 border border-gray-300">{mat.quantity ?? mat.stock?.quantity ?? 0}</td>
-                    <td className="p-3 border border-gray-300">{mat.unit}</td>
                     <td className="p-3 border border-gray-300">
-                      <button
-                        onClick={() => handleDeleteMaterial(mat.id)}
-                        className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm"
-                      >
-                        Delete
-                      </button>
+                      {editingMaterial === mat.id ? (
+                        <input
+                          type="text"
+                          value={editForm.name}
+                          onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                          className="w-full border border-gray-300 rounded px-2 py-1"
+                        />
+                      ) : (
+                        mat.name
+                      )}
+                    </td>
+                    <td className="p-3 border border-gray-300">
+                      {editingMaterial === mat.id ? (
+                        <input
+                          type="number"
+                          value={editForm.quantity}
+                          onChange={(e) => setEditForm(prev => ({ ...prev, quantity: e.target.value }))}
+                          className="w-full border border-gray-300 rounded px-2 py-1"
+                          step="0.001"
+                          min="0"
+                        />
+                      ) : (
+                        mat.quantity ?? mat.stock?.quantity ?? 0
+                      )}
+                    </td>
+                    <td className="p-3 border border-gray-300">
+                      {editingMaterial === mat.id ? (
+                        <select
+                          value={editForm.unit}
+                          onChange={(e) => setEditForm(prev => ({ ...prev, unit: e.target.value }))}
+                          className="w-full border border-gray-300 rounded px-2 py-1"
+                        >
+                          {units && units.map(u => (
+                            <option key={u.id} value={u.abbreviation}>{u.abbreviation}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        mat.unit
+                      )}
+                    </td>
+                    <td className="p-3 border border-gray-300">
+                      {editingMaterial === mat.id ? (
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => handleUpdateMaterial(mat.id)}
+                            className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm"
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={handleCancelEdit}
+                            className="bg-gray-500 hover:bg-gray-600 text-white px-3 py-1 rounded text-sm"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => handleEditMaterial(mat)}
+                            className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteMaterial(mat.id)}
+                            className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -198,7 +305,10 @@ export default function Inventory() {
         </div>
 
         {/* Purchase Orders */}
-        <PurchaseOrderList purchaseOrders={purchaseOrders} />
+        <PurchaseOrderList 
+          purchaseOrders={purchaseOrders} 
+          onPurchaseOrdersChange={handlePurchaseOrdersChange}
+        />
 
         {/* Modals */}
         <PurchaseOrderModal
@@ -212,7 +322,8 @@ export default function Inventory() {
           onClose={() => setShowUnitModal(false)}
           onSuccess={handleUnitSuccess}
         />
+        </div>
       </div>
-    </div>
+    </ErrorBoundary>
   )
 }

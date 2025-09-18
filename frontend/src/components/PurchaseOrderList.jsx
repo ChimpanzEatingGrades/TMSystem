@@ -1,43 +1,36 @@
 import React, { useState, useEffect } from 'react'
 import api from '../api'
 
-const PurchaseOrderList = () => {
-  const [purchaseOrders, setPurchaseOrders] = useState([])
-  const [loading, setLoading] = useState(true)
+const PurchaseOrderList = ({ purchaseOrders: propPurchaseOrders, onPurchaseOrdersChange }) => {
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
 
-  useEffect(() => {
-    fetchPurchaseOrders()
-  }, [])
-
-  const fetchPurchaseOrders = async () => {
-    try {
-      const response = await api.get('/inventory/purchase-orders/')
-      setPurchaseOrders(response.data)
-    } catch (err) {
-      console.error('Failed to fetch purchase orders:', err)
-      setError('Failed to fetch purchase orders')
-    } finally {
-      setLoading(false)
-    }
-  }
+  // Use prop purchase orders directly, or empty array if not provided
+  const purchaseOrders = propPurchaseOrders || []
 
   const handleDeleteOrder = async (orderId) => {
-    if (!window.confirm(`Delete Purchase Order #₱{orderId}? This cannot be undone.`)) return
-    // Optimistic UI update
-    const prev = purchaseOrders
-    setPurchaseOrders(prev.filter(po => po.id !== orderId))
+    if (!window.confirm(`Delete Purchase Order #${orderId}? This cannot be undone.`)) return
+    
+    // Optimistic UI update - notify parent immediately
+    const updatedOrders = purchaseOrders.filter(po => po.id !== orderId)
+    if (onPurchaseOrdersChange) {
+      onPurchaseOrdersChange(updatedOrders)
+    }
+    
     setInfo('')
     setError('')
+    
     try {
       await api.delete(`/inventory/purchase-orders/${orderId}/`)
-      setInfo(`Purchase Order #₱{orderId} deleted`)
+      setInfo(`Purchase Order #${orderId} deleted`)
     } catch (err) {
       console.error('Failed to delete purchase order:', err)
-      setError(`Failed to delete order #₱{orderId}: ₱{err.response?.status || ''}`)
-      // revert
-      setPurchaseOrders(prev)
+      setError(`Failed to delete order #${orderId}: ${err.response?.status || ''}`)
+      // revert by notifying parent with original data
+      if (onPurchaseOrdersChange) {
+        onPurchaseOrdersChange(purchaseOrders)
+      }
     }
   }
 
@@ -52,13 +45,6 @@ const PurchaseOrderList = () => {
     }).format(amount)
   }
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center py-8">
-        <div className="text-gray-500">Loading purchase orders...</div>
-      </div>
-    )
-  }
 
   if (error) {
     return (
@@ -77,7 +63,7 @@ const PurchaseOrderList = () => {
         </div>
       )}
       
-      {purchaseOrders.length === 0 ? (
+      {!purchaseOrders || purchaseOrders.length === 0 ? (
         <p className="text-gray-500 text-center py-4">No purchase orders found.</p>
       ) : (
         <div className="space-y-4">
@@ -122,7 +108,7 @@ const PurchaseOrderList = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {order.items.map((item, index) => (
+                    {order.items && order.items.map((item, index) => (
                       <tr key={index}>
                         <td className="border border-gray-300 px-3 py-2">{item.name}</td>
                         <td className="border border-gray-300 px-3 py-2">{item.quantity}</td>

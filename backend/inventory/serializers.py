@@ -126,6 +126,10 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
         model = PurchaseOrder
         fields = ['purchase_date', 'notes', 'items']
     
+    def to_representation(self, instance):
+        # Return the full order data including items and calculated fields
+        return PurchaseOrderSerializer(instance).data
+    
     def create(self, validated_data):
         items_data = validated_data.pop('items')
         purchase_order = PurchaseOrder.objects.create(**validated_data)
