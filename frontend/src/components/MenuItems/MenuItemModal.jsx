@@ -4,6 +4,8 @@ import RecipeModal from "./RecipeModal";
 
 export default function MenuItemModal({ onClose, onSave, editingItem }) {
   const [categories, setCategories] = useState([]);
+  const [imagePreview, setImagePreview] = useState(editingItem?.picture || null);
+
   const [formData, setFormData] = useState({
     name: editingItem?.name || "",
     price: editingItem?.price || "",
@@ -14,7 +16,7 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
     available_to: editingItem?.available_to || "23:59",
     status: editingItem?.status || "available",
     picture: null,
-    category_id: editingItem?.category?.id || "", // <-- add category
+    category_id: editingItem?.category?.id || "",
   });
   const [showRecipe, setShowRecipe] = useState(false);
 
@@ -34,9 +36,17 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
 
   const handleChange = (e) => {
     const { name, value, type, checked, files } = e.target;
+
+    if (files && files[0]) {
+      const file = files[0];
+      setFormData({ ...formData, [name]: file });
+      setImagePreview(URL.createObjectURL(file));
+      return;
+    }
+
     setFormData({
       ...formData,
-      [name]: type === "checkbox" ? checked : files ? files[0] : value,
+      [name]: type === "checkbox" ? checked : value,
     });
   };
 
@@ -61,65 +71,78 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center">
-      <div className="bg-white rounded-lg w-[400px] p-6 space-y-4">
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg w-full sm:w-[400px] max-h-screen overflow-y-auto p-6 space-y-4">
         <h2 className="text-lg font-bold">{editingItem ? "Edit" : "Add"} Product</h2>
 
         {/* Name */}
-        <input
-          type="text"
-          name="name"
-          placeholder="Product Name"
-          value={formData.name}
-          onChange={handleChange}
-          className="w-full border p-2 rounded"
-        />
+        <div>
+          <label className="block text-sm font-medium">Product Name</label>
+          <input
+            type="text"
+            name="name"
+            value={formData.name}
+            onChange={handleChange}
+            className="w-full border p-2 rounded"
+          />
+        </div>
 
         {/* Price */}
-        <input
-          type="number"
-          name="price"
-          placeholder="Price"
-          value={formData.price}
-          onChange={handleChange}
-          className="w-full border p-2 rounded"
-        />
+        <div>
+          <label className="block text-sm font-medium">Price</label>
+          <input
+            type="number"
+            name="price"
+            value={formData.price}
+            onChange={handleChange}
+            className="w-full border p-2 rounded"
+          />
+        </div>
 
         {/* Category */}
-        <select
-          name="category_id"
-          value={formData.category_id}
-          onChange={handleChange}
-          className="w-full border p-2 rounded"
-        >
-          <option value="">Select Category</option>
-          {categories.map((cat) => (
-            <option key={cat.id} value={cat.id}>
-              {cat.name}
-            </option>
-          ))}
-        </select>
-
-        {/* Valid From/Until */}
-        <div className="flex gap-2">
-          <input
-            type="date"
-            name="valid_from"
-            value={formData.valid_from}
+        <div>
+          <label className="block text-sm font-medium">Category</label>
+          <select
+            name="category_id"
+            value={formData.category_id}
             onChange={handleChange}
-            className="border p-2 rounded w-full"
-          />
-          {!formData.no_end_date && (
+            className="w-full border p-2 rounded"
+          >
+            <option value="">Select Category</option>
+            {categories.map((cat) => (
+              <option key={cat.id} value={cat.id}>
+                {cat.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Valid Dates */}
+        <div className="flex gap-2">
+          <div className="flex-1">
+            <label className="block text-sm font-medium">Start Date</label>
             <input
               type="date"
-              name="valid_until"
-              value={formData.valid_until}
+              name="valid_from"
+              value={formData.valid_from}
               onChange={handleChange}
               className="border p-2 rounded w-full"
             />
+          </div>
+          {!formData.no_end_date && (
+            <div className="flex-1">
+              <label className="block text-sm font-medium">End Date</label>
+              <input
+                type="date"
+                name="valid_until"
+                value={formData.valid_until}
+                onChange={handleChange}
+                className="border p-2 rounded w-full"
+              />
+            </div>
           )}
         </div>
-        <label className="flex items-center gap-2">
+        <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
             name="no_end_date"
@@ -131,40 +154,73 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
 
         {/* Available time */}
         <div className="flex gap-2">
-          <input
-            type="time"
-            name="available_from"
-            value={formData.available_from}
-            onChange={handleChange}
-            className="border p-2 rounded w-full"
-          />
-          <input
-            type="time"
-            name="available_to"
-            value={formData.available_to}
-            onChange={handleChange}
-            className="border p-2 rounded w-full"
-          />
+          <div className="flex-1">
+            <label className="block text-sm font-medium">Available From</label>
+            <input
+              type="time"
+              name="available_from"
+              value={formData.available_from}
+              onChange={handleChange}
+              className="border p-2 rounded w-full"
+            />
+          </div>
+          <div className="flex-1">
+            <label className="block text-sm font-medium">Available To</label>
+            <input
+              type="time"
+              name="available_to"
+              value={formData.available_to}
+              onChange={handleChange}
+              className="border p-2 rounded w-full"
+            />
+          </div>
         </div>
 
         {/* Status */}
-        <select
-          name="status"
-          value={formData.status}
-          onChange={handleChange}
-          className="w-full border p-2 rounded"
-        >
-          <option value="available">Available</option>
-          <option value="unavailable">Unavailable</option>
-        </select>
+        <div>
+          <label className="block text-sm font-medium">Status</label>
+          <select
+            name="status"
+            value={formData.status}
+            onChange={handleChange}
+            className="w-full border p-2 rounded"
+          >
+            <option value="available">Available</option>
+            <option value="unavailable">Unavailable</option>
+          </select>
+        </div>
 
         {/* Picture */}
-        <input
-          type="file"
-          name="picture"
-          accept="image/*"
-          onChange={handleChange}
-        />
+        <div>
+          <label className="block text-sm font-medium">Picture</label>
+          <div>
+            <input
+              type="file"
+              id="pictureUpload"
+              name="picture"
+              accept="image/*"
+              onChange={handleChange}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => document.getElementById("pictureUpload").click()}
+              className="px-4 py-2 bg-blue-500 text-white rounded"
+            >
+              {imagePreview ? "Change Image" : "Upload Image"}
+            </button>
+          </div>
+          {imagePreview && (
+            <div className="mt-2">
+              <img
+                src={imagePreview}
+                alt="Preview"
+                className="w-24 h-24 object-cover rounded border"
+              />
+              <p className="text-xs text-gray-500">Preview</p>
+            </div>
+          )}
+        </div>
 
         {/* Recipe Button */}
         <button
@@ -175,7 +231,7 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
         </button>
 
         {/* Actions */}
-        <div className="flex justify-end gap-2">
+        <div className="flex justify-end gap-2 sticky bottom-0 bg-white pt-2">
           <button
             onClick={onClose}
             className="px-4 py-2 bg-gray-300 rounded"
@@ -196,7 +252,7 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
           onClose={() => setShowRecipe(false)}
           existingRecipe={editingItem?.recipe}
           onSave={(recipe) => {
-            setFormData({ ...formData, recipe_id: recipe.id }); // backend expects recipe_id
+            setFormData({ ...formData, recipe_id: recipe.id });
           }}
         />
       )}
