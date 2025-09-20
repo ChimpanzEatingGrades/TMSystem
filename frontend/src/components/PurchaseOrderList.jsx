@@ -77,6 +77,11 @@ const PurchaseOrderList = ({ purchaseOrders: propPurchaseOrders, onPurchaseOrder
                   <p className="text-gray-600">
                     Date: {formatDate(order.purchase_date)}
                   </p>
+                  {order.encoded_by_name && (
+                    <p className="text-gray-600 text-sm">
+                      Encoded by: {order.encoded_by_name}
+                    </p>
+                  )}
                   {order.notes && (
                     <p className="text-gray-600 text-sm mt-1">
                       Notes: {order.notes}

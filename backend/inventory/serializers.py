@@ -1,7 +1,8 @@
 # inventory/serializers.py
 from django.db import transaction
 from rest_framework import serializers
-from .models import RawMaterial, Recipe, RecipeItem, MenuCategory, MenuItem, UnitOfMeasurement, PurchaseOrder, PurchaseOrderItem
+from decimal import Decimal
+from .models import RawMaterial, Recipe, RecipeItem, MenuCategory, MenuItem, UnitOfMeasurement, PurchaseOrder, PurchaseOrderItem, StockTransaction
 
 class UnitOfMeasurementSerializer(serializers.ModelSerializer):
     class Meta:
@@ -124,6 +125,7 @@ class PurchaseOrderItemSerializer(serializers.ModelSerializer):
 class PurchaseOrderSerializer(serializers.ModelSerializer):
     items = PurchaseOrderItemSerializer(many=True, read_only=True)
     total_amount = serializers.ReadOnlyField()
+    encoded_by_username = serializers.CharField(source='encoded_by.username', read_only=True)
     
     class Meta:
         model = PurchaseOrder
@@ -131,10 +133,21 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
 
 class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
     items = PurchaseOrderItemSerializer(many=True, write_only=True)
+    encoded_by = serializers.CharField(
+        max_length=150, 
+        required=True, 
+        allow_blank=False,
+        help_text="Name of the person who encoded this purchase order"
+    )
     
     class Meta:
         model = PurchaseOrder
-        fields = ['purchase_date', 'notes', 'items']
+        fields = ['purchase_date', 'notes', 'encoded_by', 'items']
+    
+    def validate_encoded_by(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Encoded by field is required and cannot be empty")
+        return value.strip()
     
     def to_representation(self, instance):
         # Return the full order data including items and calculated fields
@@ -142,7 +155,13 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
     
     def create(self, validated_data):
         items_data = validated_data.pop('items')
-        purchase_order = PurchaseOrder.objects.create(**validated_data)
+        encoded_by_name = validated_data.pop('encoded_by')
+        
+        # Create the purchase order with the encoded_by_name field
+        purchase_order = PurchaseOrder.objects.create(
+            encoded_by_name=encoded_by_name,
+            **validated_data
+        )
         
         # items_data is already validated (internal) at this point.
         # Create items directly to avoid double-validation errors on 'unit'.
@@ -178,4 +197,55 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
             # Add the purchased quantity to existing inventory
             material.quantity += item.quantity
             material.save()
+            
+            # Create stock transaction record
+            StockTransaction.objects.create(
+                transaction_type='stock_in',
+                raw_material=material,
+                quantity=item.quantity,
+                unit=item.unit.abbreviation,
+                reference_number=f"PO-{purchase_order.id}",
+                notes=f"Stock in from Purchase Order #{purchase_order.id}",
+                performed_by_name=purchase_order.encoded_by_name
+            )
+            
             print(f"Updated inventory: {material.name} - Added {item.quantity} {item.unit.abbreviation}")
+
+
+class StockTransactionSerializer(serializers.ModelSerializer):
+    raw_material_name = serializers.CharField(source='raw_material.name', read_only=True)
+    performed_by_username = serializers.CharField(source='performed_by.username', read_only=True)
+    transaction_type_display = serializers.CharField(source='get_transaction_type_display', read_only=True)
+    
+    class Meta:
+        model = StockTransaction
+        fields = "__all__"
+        read_only_fields = ['created_at']
+
+
+class StockOutSerializer(serializers.Serializer):
+    """Serializer for stock out operations"""
+    raw_material_id = serializers.IntegerField()
+    quantity = serializers.DecimalField(max_digits=12, decimal_places=3, min_value=Decimal('0.0001'))
+    performed_by = serializers.CharField(max_length=150, required=True, help_text="Name of the person who performed this stock out")
+    notes = serializers.CharField(required=False, allow_blank=True)
+    
+    def validate_raw_material_id(self, value):
+        try:
+            material = RawMaterial.objects.get(id=value)
+            return value
+        except RawMaterial.DoesNotExist:
+            raise serializers.ValidationError("Raw material not found")
+    
+    def validate_quantity(self, value):
+        if value <= Decimal('0'):
+            raise serializers.ValidationError("Quantity must be greater than 0")
+        return value
+    
+    def validate(self, data):
+        material = RawMaterial.objects.get(id=data['raw_material_id'])
+        if material.quantity < data['quantity']:
+            raise serializers.ValidationError(
+                f"Insufficient stock. Available: {material.quantity} {material.unit}, Requested: {data['quantity']} {material.unit}"
+            )
+        return data
