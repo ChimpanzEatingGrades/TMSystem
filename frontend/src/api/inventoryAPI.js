@@ -18,8 +18,16 @@ export const createRecipe = (data) => api.post("/inventory/recipes/", data);
 export const updateRecipe = (id, data) => api.put(`/inventory/recipes/${id}/`, data);
 export const deleteRecipe = (id) => api.delete(`/inventory/recipes/${id}/`);
 
+// units
+// export const getUnits = () => api.get("/inventory/units/");
+// export const createUnits = (data) => api.post("/inventory/units/", data);
+// export const updateUnits = (id, data) => api.put(`/inventory/units/${id}/`, data);
+// export const deleteUnits = (id) => api.delete(`/inventory/units/${id}/`);
+
 // Raw Materials
 export const getRawMaterials = () => api.get("/inventory/rawmaterials/");
 export const createRawMaterial = (data) => api.post("/inventory/rawmaterials/", data);
 export const updateRawMaterial = (id, data) => api.put(`/inventory/rawmaterials/${id}/`, data);
 export const deleteRawMaterial = (id) => api.delete(`/inventory/rawmaterials/${id}/`);
+
+export default api;

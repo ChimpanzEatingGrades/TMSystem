@@ -13,15 +13,15 @@ import {
   X,
   AlertTriangle,
 } from "lucide-react"
-import api from "../api"
-import Navbar from "../components/Navbar"
-import PurchaseOrderModal from "../components/PurchaseOrderModal"
-import UnitManagementModal from "../components/UnitManagementModal"
-import PurchaseOrderList from "../components/PurchaseOrderList"
-import StockOutModal from "../components/StockOutModal"
-import StockHistory from "../components/StockHistory"
-import ClearInventoryModal from "../components/ClearInventoryModal"
-import ErrorBoundary from "../components/ErrorBoundary"
+import api from "../../api"
+import Navbar from "../Navbar"
+import PurchaseOrderModal from "./PurchaseOrderModal"
+import UnitManagementModal from "./UnitManagementModal"
+import PurchaseOrderList from "./PurchaseOrderList"
+import StockOutModal from "./StockOutModal"
+import StockHistory from "./StockHistory"
+import ClearInventoryModal from "./ClearInventoryModal"
+import ErrorBoundary from "./ErrorBoundary"
 
 export default function Inventory() {
   const [materials, setMaterials] = useState([])
