@@ -5,6 +5,9 @@ import Navbar from "../components/Navbar"
 import PurchaseOrderModal from "../components/PurchaseOrderModal"
 import UnitManagementModal from "../components/UnitManagementModal"
 import PurchaseOrderList from "../components/PurchaseOrderList"
+import StockOutModal from "../components/StockOutModal"
+import StockHistory from "../components/StockHistory"
+import ClearInventoryModal from "../components/ClearInventoryModal"
 import ErrorBoundary from "../components/ErrorBoundary"
 
 export default function Inventory() {
@@ -16,6 +19,9 @@ export default function Inventory() {
   const [error, setError] = useState("")
   const [showPurchaseModal, setShowPurchaseModal] = useState(false)
   const [showUnitModal, setShowUnitModal] = useState(false)
+  const [showStockOutModal, setShowStockOutModal] = useState(false)
+  const [showStockHistory, setShowStockHistory] = useState(false)
+  const [showClearInventoryModal, setShowClearInventoryModal] = useState(false)
   const [purchaseOrders, setPurchaseOrders] = useState([])
   const [editingMaterial, setEditingMaterial] = useState(null)
   const [editForm, setEditForm] = useState({ name: "", quantity: "", unit: "" })
@@ -149,6 +155,24 @@ export default function Inventory() {
 
   const handleUnitSuccess = () => fetchUnits()
 
+  // Handle stock out success
+  const handleStockOutSuccess = (data) => {
+    // Refresh materials list to show updated inventory
+    fetchMaterials()
+    setError('')
+    // You could also show a success message here
+    console.log('Stock out successful:', data)
+  }
+
+  // Handle clear inventory success
+  const handleClearInventorySuccess = (data) => {
+    // Clear all local state
+    setMaterials([])
+    setPurchaseOrders([])
+    setError('')
+    console.log('Inventory cleared successfully:', data)
+  }
+
 
   return (
     <ErrorBoundary>
@@ -165,10 +189,28 @@ export default function Inventory() {
               Create Purchase Order
             </button>
             <button
+              onClick={() => setShowStockOutModal(true)}
+              className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md"
+            >
+              Stock Out
+            </button>
+            <button
+              onClick={() => setShowStockHistory(!showStockHistory)}
+              className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-md"
+            >
+              {showStockHistory ? 'Hide' : 'Show'} Stock History
+            </button>
+            <button
               onClick={() => setShowUnitModal(true)}
               className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md"
             >
               Manage Units
+            </button>
+            <button
+              onClick={() => setShowClearInventoryModal(true)}
+              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md"
+            >
+              Clear All Data
             </button>
           </div>
         </div>
@@ -315,6 +357,13 @@ export default function Inventory() {
           )}
         </div>
 
+        {/* Stock History */}
+        {showStockHistory && (
+          <div className="mb-8">
+            <StockHistory />
+          </div>
+        )}
+
         {/* Purchase Orders */}
         <PurchaseOrderList 
           purchaseOrders={purchaseOrders} 
@@ -328,10 +377,22 @@ export default function Inventory() {
           onSuccess={handlePurchaseSuccess} // returns new PO
         />
 
+        <StockOutModal
+          isOpen={showStockOutModal}
+          onClose={() => setShowStockOutModal(false)}
+          onSuccess={handleStockOutSuccess}
+        />
+
         <UnitManagementModal
           isOpen={showUnitModal}
           onClose={() => setShowUnitModal(false)}
           onSuccess={handleUnitSuccess}
+        />
+
+        <ClearInventoryModal
+          isOpen={showClearInventoryModal}
+          onClose={() => setShowClearInventoryModal(false)}
+          onSuccess={handleClearInventorySuccess}
         />
         </div>
       </div>
