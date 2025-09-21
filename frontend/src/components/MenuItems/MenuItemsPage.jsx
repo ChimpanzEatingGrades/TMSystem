@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getMenuCategories, getMenuItems } from "../api/inventoryApi";
+import { getMenuCategories, getMenuItems } from "../api/inventoryAPI";
 import MenuItemCard from "./MenuItemCard";
 import MenuItemModal from "./MenuItemModal";
 

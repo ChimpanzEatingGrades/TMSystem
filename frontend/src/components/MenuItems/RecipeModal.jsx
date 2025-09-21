@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getRawMaterials, createRecipe, updateRecipe } from "../../api/inventoryApi";
+import { getRawMaterials, createRecipe, updateRecipe } from "../../api/inventoryAPI";
 
 export default function RecipeModal({ onClose, existingRecipe, onSave, menuItemId }) {
   const [rawMaterials, setRawMaterials] = useState([]);
