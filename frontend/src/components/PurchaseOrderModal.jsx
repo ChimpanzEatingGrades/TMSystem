@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react'
+import { jwtDecode } from 'jwt-decode'
 import api from '../api'
+import { ACCESS_TOKEN } from '../constants'
 
 const PurchaseOrderModal = ({ isOpen, onClose, onSuccess }) => {
   const [purchaseDate, setPurchaseDate] = useState('')
   const [notes, setNotes] = useState('')
-  const [encodedBy, setEncodedBy] = useState('')
   const [items, setItems] = useState([{ name: '', quantity: '', unit: '', unitPrice: '', totalPrice: 0, isNewMaterial: false, selectedMaterial: '' }])
   const [units, setUnits] = useState([])
   const [rawMaterials, setRawMaterials] = useState([])
@@ -17,7 +18,6 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSuccess }) => {
     if (isOpen) {
       setPurchaseDate(new Date().toISOString().split('T')[0])
       setNotes('')
-      setEncodedBy('')
       setItems([{ name: '', quantity: '', unit: '', unitPrice: '', totalPrice: 0, isNewMaterial: false, selectedMaterial: '' }])
       setError('')
       fetchUnits()
@@ -84,6 +84,15 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSuccess }) => {
     e.preventDefault()
     setLoading(true)
     setError('')
+    
+    // Check if user is authenticated
+    const token = localStorage.getItem(ACCESS_TOKEN)
+    if (!token) {
+      setError('You must be logged in to create a purchase order.')
+      setLoading(false)
+      return
+    }
+    
     try {
       const validItems = items.filter(i => {
         if (i.isNewMaterial) {
@@ -105,11 +114,10 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSuccess }) => {
           total_price: parseFloat(i.totalPrice)
         }
       })
-
+      
       const res = await api.post('/inventory/purchase-orders/', {
         purchase_date: purchaseDate,
         notes,
-        encoded_by: encodedBy,
         items: itemsWithUnitIds
       })
 
@@ -129,7 +137,7 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSuccess }) => {
       }
     } catch (err) {
       console.error('Error creating purchase order:', err)
-      setError(err.response?.data?.detail || err.message || 'Failed to create purchase order.')
+      setError(err.response?.data?.detail || err.response?.data?.error || err.message || 'Failed to create purchase order.')
     } finally {
       setLoading(false)
     }
@@ -149,14 +157,10 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSuccess }) => {
         {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">{error}</div>}
 
         <form onSubmit={handleSubmit}>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Purchase Date</label>
               <input type="date" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)} className="w-full border border-gray-300 rounded-md px-3 py-2" required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Encoded By *</label>
-              <input type="text" value={encodedBy} onChange={e => setEncodedBy(e.target.value)} className="w-full border border-gray-300 rounded-md px-3 py-2" placeholder="Enter encoder name..." required />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Notes (Optional)</label>

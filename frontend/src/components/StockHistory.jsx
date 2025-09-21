@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { RefreshCw } from 'lucide-react'
 import api from '../api'
 
 const StockHistory = () => {
@@ -95,6 +96,10 @@ const StockHistory = () => {
     })
   }
 
+  const handleRefresh = () => {
+    fetchTransactions()
+  }
+
   if (loading && transactions.length === 0) {
     return (
       <div className="flex justify-center items-center py-8">
@@ -107,6 +112,14 @@ const StockHistory = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Stock in/Stock out History</h2>
+        <button
+          onClick={handleRefresh}
+          disabled={loading}
+          className="flex items-center space-x-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white rounded-md transition-colors duration-200"
+        >
+          <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+          <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
+        </button>
       </div>
 
       {error && (
