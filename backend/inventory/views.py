@@ -103,7 +103,7 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_permissions(self):
-        if self.action in ["create", "test"]:
+        if self.action in ["test"]:
             return [AllowAny()]
         return [IsAuthenticated()]
 
@@ -114,10 +114,14 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         try:
-            print(f"Received purchase order data: {request.data}")
-            return super().create(request, *args, **kwargs)
+            # Use the serializer with proper context
+            serializer = self.get_serializer(data=request.data)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            print(f"Error creating purchase order: {e}")
             return Response(
                 {"error": str(e), "detail": "Failed to create purchase order"},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -210,8 +214,15 @@ class StockOutViewSet(viewsets.ViewSet):
             try:
                 material = RawMaterial.objects.get(id=serializer.validated_data['raw_material_id'])
                 quantity = serializer.validated_data['quantity']
-                performed_by_name = serializer.validated_data['performed_by']
                 notes = serializer.validated_data.get('notes', '')
+                
+                # Get the authenticated user
+                if request.user.is_authenticated:
+                    performed_by_user = request.user
+                    performed_by_name = request.user.username
+                else:
+                    performed_by_user = None
+                    performed_by_name = "System"
                 
                 # Update material quantity
                 material.quantity -= quantity
@@ -225,6 +236,7 @@ class StockOutViewSet(viewsets.ViewSet):
                     unit=material.unit,
                     reference_number=f"SO-{StockTransaction.objects.count() + 1}",
                     notes=notes or f"Stock out - {quantity} {material.unit}",
+                    performed_by=performed_by_user,
                     performed_by_name=performed_by_name
                 )
                 
