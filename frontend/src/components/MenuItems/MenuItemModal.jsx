@@ -8,15 +8,14 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
 
   const [formData, setFormData] = useState({
     name: editingItem?.name || "",
+    description: editingItem?.description || "", // ✅ added description
     price: editingItem?.price || "",
     valid_from: editingItem?.valid_from || "",
     valid_until: editingItem?.valid_until || "",
     no_end_date: !editingItem?.valid_until,
     available_from: editingItem?.available_from || "00:00",
     available_to: editingItem?.available_to || "23:59",
-    // ✅ FIX: use is_active directly (boolean), default true
-    is_active:
-      typeof editingItem?.is_active === "boolean" ? editingItem.is_active : true,
+    is_active: typeof editingItem?.is_active === "boolean" ? editingItem.is_active : true,
     picture: null,
     category_id: editingItem?.category?.id || "",
   });
@@ -47,7 +46,6 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
       return;
     }
 
-    // ✅ Map "status" dropdown to boolean is_active
     if (name === "status") {
       setFormData({ ...formData, is_active: value === "available" });
       return;
@@ -62,7 +60,6 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
   const handleSubmit = async () => {
     const data = new FormData();
 
-    // ✅ append keys properly (only send is_active, not status)
     Object.keys(formData).forEach((key) => {
       if (formData[key] !== null && formData[key] !== "") {
         data.append(key, formData[key]);
@@ -107,6 +104,19 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
             value={formData.price}
             onChange={handleChange}
             className="w-full border p-2 rounded"
+          />
+        </div>
+
+        {/* Description */}
+        <div>
+          <label className="block text-sm font-medium">Description</label>
+          <textarea
+            name="description"
+            value={formData.description}
+            onChange={handleChange}
+            rows={3}
+            className="w-full border p-2 rounded resize-none"
+            placeholder="Enter product description"
           />
         </div>
 
@@ -187,7 +197,7 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
           </div>
         </div>
 
-        {/* Status (mapped to is_active) */}
+        {/* Status */}
         <div>
           <label className="block text-sm font-medium">Status</label>
           <select

@@ -28,6 +28,10 @@ class MenuCategoryAdmin(admin.ModelAdmin):
 
 @admin.register(MenuItem)
 class MenuItemAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "price", "category", "is_active")
+    list_display = ("id", "name", "price", "picture",
+            "valid_from", "valid_until", "description",
+            "available_from", "available_to",  # <-- ADD THESE
+            "recipe", "recipe_id", "category",
+            "is_active", "created_at", "updated_at",)
     search_fields = ("name", "description")
     list_filter = ("is_active", "category")
