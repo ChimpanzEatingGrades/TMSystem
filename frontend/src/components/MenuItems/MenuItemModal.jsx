@@ -14,10 +14,13 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
     no_end_date: !editingItem?.valid_until,
     available_from: editingItem?.available_from || "00:00",
     available_to: editingItem?.available_to || "23:59",
-    status: editingItem?.status || "available",
+    // ✅ FIX: use is_active directly (boolean), default true
+    is_active:
+      typeof editingItem?.is_active === "boolean" ? editingItem.is_active : true,
     picture: null,
     category_id: editingItem?.category?.id || "",
   });
+
   const [showRecipe, setShowRecipe] = useState(false);
 
   useEffect(() => {
@@ -44,6 +47,12 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
       return;
     }
 
+    // ✅ Map "status" dropdown to boolean is_active
+    if (name === "status") {
+      setFormData({ ...formData, is_active: value === "available" });
+      return;
+    }
+
     setFormData({
       ...formData,
       [name]: type === "checkbox" ? checked : value,
@@ -52,6 +61,8 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
 
   const handleSubmit = async () => {
     const data = new FormData();
+
+    // ✅ append keys properly (only send is_active, not status)
     Object.keys(formData).forEach((key) => {
       if (formData[key] !== null && formData[key] !== "") {
         data.append(key, formData[key]);
@@ -176,12 +187,12 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
           </div>
         </div>
 
-        {/* Status */}
+        {/* Status (mapped to is_active) */}
         <div>
           <label className="block text-sm font-medium">Status</label>
           <select
             name="status"
-            value={formData.status}
+            value={formData.is_active ? "available" : "unavailable"}
             onChange={handleChange}
             className="w-full border p-2 rounded"
           >
@@ -232,10 +243,7 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
 
         {/* Actions */}
         <div className="flex justify-end gap-2 sticky bottom-0 bg-white pt-2">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-gray-300 rounded"
-          >
+          <button onClick={onClose} className="px-4 py-2 bg-gray-300 rounded">
             Cancel
           </button>
           <button

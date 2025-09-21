@@ -83,6 +83,7 @@ class MenuItemSerializer(serializers.ModelSerializer):
         fields = [
             "id", "name", "price", "picture",
             "valid_from", "valid_until", "description",
+            "available_from", "available_to",  # <-- ADD THESE
             "recipe", "recipe_id", "category", "category_id",
             "is_active", "created_at", "updated_at",
         ]

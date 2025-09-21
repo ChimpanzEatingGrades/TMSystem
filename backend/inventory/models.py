@@ -109,6 +109,9 @@ class MenuItem(models.Model):
     valid_from = models.DateField(null=True, blank=True)
     valid_until = models.DateField(null=True, blank=True)
 
+    available_from = models.TimeField(null=True, blank=True)
+    available_to = models.TimeField(null=True, blank=True)
+
     description = models.TextField(blank=True)
 
     recipe = models.ForeignKey(
