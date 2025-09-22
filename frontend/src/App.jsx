@@ -11,6 +11,8 @@ import ProtectedRoute from "./components/ProtectedRoute"
 import MenuPage from "./pages/MenuPage"
 import MenuFormPage from "./pages/MenuFormPage";
 import MenuItemsPage from "./components/MenuItems/MenuItemsPage";
+import DigitalMenu from "./pages/DigitalMenu"
+import ShoppingCart from "./pages/ShoppingCart"
 
 function Logout(){
   localStorage.clear()
@@ -31,6 +33,8 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<RegisterAndLogout />} />
         <Route path="/logout" element={<Logout />} />
+        <Route path="/digital-menu" element={<DigitalMenu />} />
+        <Route path="/shopping-cart" element={<ShoppingCart />} />
         <Route path="/about" element={<About />} />
         <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>}
         />

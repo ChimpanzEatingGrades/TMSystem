@@ -68,6 +68,26 @@ const Navbar = () => {
               </button>
 
               <button
+                onClick={() => handleNavigation("/digital-menu")}
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center space-x-1 ${
+                  isActive("/digital-menu") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
+                }`}
+              >
+                <Home size={16} />
+                <span>Menu</span>
+              </button>
+
+              <button
+                onClick={() => handleNavigation("/shopping-cart")}
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center space-x-1 ${
+                  isActive("/shopping-cart") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
+                }`}
+              >
+                <Home size={16} />
+                <span>Cart</span>
+              </button>
+
+              <button
                 onClick={() => handleNavigation("/about")}
                 className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center space-x-1 ${
                   isActive("/about") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
@@ -96,7 +116,7 @@ const Navbar = () => {
                   }`}
                 >
                   <Info size={16} />
-                  <span>Menu</span>
+                  <span>Menu Mgmt</span>
                 </button>
               )}
 
