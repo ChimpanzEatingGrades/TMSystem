@@ -1,37 +1,73 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Trash2, Plus, Minus, ArrowLeft } from "lucide-react"
+import { Trash2, Plus, Minus, ArrowLeft, X } from "lucide-react"
 import Navbar from "../components/Navbar"
+import { QRCodeCanvas } from "qrcode.react"
+
+function CheckoutModal({ order, subtotal, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center">
+      <div className="bg-white rounded-xl p-6 max-w-md w-full relative">
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 text-gray-500 hover:text-black"
+        >
+          <X size={20} />
+        </button>
+
+        <h2 className="text-xl font-bold text-center mb-4">
+          Present to Cashier
+        </h2>
+
+        {/* QR Code */}
+        <div className="flex justify-center mb-4">
+          <QRCodeCanvas
+            value={JSON.stringify(order)}
+            size={400}
+            bgColor="#ffffff"
+            fgColor="#000000"
+            level="H"
+            includeMargin={true}
+          />
+        </div>
+
+        {/* Total */}
+        <div className="text-center text-lg font-semibold">
+          Total: ₱{subtotal.toFixed(2)}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function ShoppingCartPage() {
-  const [cart, setCart] = useState(() => {
-    const stored = localStorage.getItem("customer_cart")
-    return stored ? JSON.parse(stored) : []
+  // Load order from localStorage
+  const [order, setOrder] = useState(() => {
+    const stored = localStorage.getItem("customer_order")
+    return stored
+      ? JSON.parse(stored)
+      : {
+          name: "",
+          requests: "",
+          cart: [],
+        }
   })
 
-  const [customerName, setCustomerName] = useState(() => {
-    return localStorage.getItem("customer_name") || ""
-  })
-  const [specialRequests, setSpecialRequests] = useState(() => {
-    return localStorage.getItem("customer_requests") || ""
-  })
+  const { name, requests, cart } = order
+  const [showModal, setShowModal] = useState(false)
 
+  // Keep localStorage updated
   useEffect(() => {
-    localStorage.setItem("customer_cart", JSON.stringify(cart))
-  }, [cart])
+    localStorage.setItem("customer_order", JSON.stringify(order))
+  }, [order])
 
-  useEffect(() => {
-    localStorage.setItem("customer_name", customerName)
-  }, [customerName])
-
-  useEffect(() => {
-    localStorage.setItem("customer_requests", specialRequests)
-  }, [specialRequests])
-
+  // Quantity adjustments
   const changeQuantity = (id, delta) => {
-    setCart((prev) =>
-      prev
+    setOrder((prev) => ({
+      ...prev,
+      cart: prev.cart
         .map((item) =>
           item.id === id
             ? {
@@ -41,14 +77,35 @@ export default function ShoppingCartPage() {
               }
             : item
         )
-        .filter((item) => item.quantity > 0)
-    )
+        .filter((item) => item.quantity > 0),
+    }))
   }
 
+  // Remove item
   const removeItem = (id) => {
-    setCart((prev) => prev.filter((item) => item.id !== id))
+    setOrder((prev) => ({
+      ...prev,
+      cart: prev.cart.filter((item) => item.id !== id),
+    }))
   }
 
+  // Update name
+  const handleNameChange = (e) => {
+    setOrder((prev) => ({
+      ...prev,
+      name: e.target.value,
+    }))
+  }
+
+  // Update requests
+  const handleRequestsChange = (e) => {
+    setOrder((prev) => ({
+      ...prev,
+      requests: e.target.value,
+    }))
+  }
+
+  // Subtotal
   const subtotal = cart.reduce((sum, item) => sum + item.totalPrice, 0)
 
   return (
@@ -148,8 +205,8 @@ export default function ShoppingCartPage() {
                 </label>
                 <input
                   type="text"
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
+                  value={name}
+                  onChange={handleNameChange}
                   className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-yellow-400"
                   placeholder="Enter your name"
                 />
@@ -161,21 +218,34 @@ export default function ShoppingCartPage() {
                   Special Requests
                 </label>
                 <textarea
-                  value={specialRequests}
-                  onChange={(e) => setSpecialRequests(e.target.value)}
+                  value={requests}
+                  onChange={handleRequestsChange}
                   className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-yellow-400"
                   rows={3}
                   placeholder="E.g. No onions, allergic to eggs..."
                 />
               </div>
 
-              <button className="w-full mt-6 bg-yellow-400 hover:bg-yellow-500 text-black font-semibold py-3 rounded-lg shadow">
+              {/* Checkout Button */}
+              <button
+                onClick={() => setShowModal(true)}
+                className="w-full mt-6 bg-yellow-400 hover:bg-yellow-500 text-black font-semibold py-3 rounded-lg shadow"
+              >
                 Proceed to Checkout
               </button>
             </div>
           </div>
         )}
       </div>
+
+      {/* Checkout Modal */}
+      {showModal && (
+        <CheckoutModal
+          order={order}
+          subtotal={subtotal}
+          onClose={() => setShowModal(false)}
+        />
+      )}
     </div>
   )
 }

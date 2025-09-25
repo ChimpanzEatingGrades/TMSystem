@@ -67,7 +67,7 @@ const Navbar = () => {
                 <span>Home</span>
               </button>
 
-              {/* <button
+              <button
                 onClick={() => handleNavigation("/digital-menu")}
                 className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center space-x-1 ${
                   isActive("/digital-menu") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
@@ -85,7 +85,7 @@ const Navbar = () => {
               >
                 <Home size={16} />
                 <span>Cart</span>
-              </button> */}
+              </button>
 
               <button
                 onClick={() => handleNavigation("/about")}

@@ -11,13 +11,28 @@ export default function CustomerMenuPage() {
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [searchTerm, setSearchTerm] = useState("")
   const [filteredItems, setFilteredItems] = useState([])
-  const [cart, setCart] = useState(() => {
-    const stored = localStorage.getItem("customer_cart")
-    return stored ? JSON.parse(stored) : []
-  })
-  const [quantities, setQuantities] = useState({}) // store quantity per itemId
+  const [quantities, setQuantities] = useState({}) // track quantity per itemId
 
-  // Load items + categories
+  // Load order (name, requests, cart) from localStorage
+  const [order, setOrder] = useState(() => {
+    const stored = localStorage.getItem("customer_order")
+    return stored
+      ? JSON.parse(stored)
+      : {
+          name: "",
+          requests: "",
+          cart: [],
+        }
+  })
+
+  const { cart } = order
+
+  // Persist order to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem("customer_order", JSON.stringify(order))
+  }, [order])
+
+  // Load menu items + categories
   useEffect(() => {
     loadData()
   }, [])
@@ -25,11 +40,6 @@ export default function CustomerMenuPage() {
   useEffect(() => {
     filterItems()
   }, [menuItems, selectedCategory, searchTerm])
-
-  // Save cart to local storage
-  useEffect(() => {
-    localStorage.setItem("customer_cart", JSON.stringify(cart))
-  }, [cart])
 
   const loadData = async () => {
     try {
@@ -93,10 +103,11 @@ export default function CustomerMenuPage() {
 
   const addToCart = (item) => {
     const quantity = quantities[item.id] || 1
-    setCart((prev) => {
-      const existing = prev.find((c) => c.id === item.id)
+    setOrder((prev) => {
+      const existing = prev.cart.find((c) => c.id === item.id)
+      let updatedCart
       if (existing) {
-        return prev.map((c) =>
+        updatedCart = prev.cart.map((c) =>
           c.id === item.id
             ? {
                 ...c,
@@ -105,20 +116,22 @@ export default function CustomerMenuPage() {
               }
             : c
         )
+      } else {
+        updatedCart = [
+          ...prev.cart,
+          {
+            id: item.id,
+            name: item.name,
+            description: item.description,
+            picture: item.picture,
+            category: item.category?.name || "",
+            unitPrice: parseFloat(item.price),
+            quantity,
+            totalPrice: parseFloat(item.price) * quantity,
+          },
+        ]
       }
-      return [
-        ...prev,
-        {
-          id: item.id,
-          name: item.name,
-          description: item.description,
-          picture: item.picture,
-          category: item.category?.name || "",
-          unitPrice: parseFloat(item.price),
-          quantity,
-          totalPrice: parseFloat(item.price) * quantity,
-        },
-      ]
+      return { ...prev, cart: updatedCart }
     })
   }
 
