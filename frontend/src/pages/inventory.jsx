@@ -77,6 +77,7 @@ export default function Inventory() {
   }
 
   // Raw material actions
+
   const handleAddMaterial = async (e) => {
     e.preventDefault()
     try {
@@ -271,7 +272,7 @@ export default function Inventory() {
               </div>
             </div>
           )}
-
+          {/*}
           <div className="bg-white rounded-2xl p-8 mb-8 shadow-sm border border-gray-200">
             <h2 className="text-2xl font-semibold text-gray-900 mb-6 flex items-center gap-3">
               <div className="p-2 bg-yellow-100 rounded-lg border border-yellow-200">
@@ -330,7 +331,7 @@ export default function Inventory() {
               </div>
             </form>
           </div>
-
+*/}
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
             {/* Current Inventory */}
             <div className="flex flex-col">

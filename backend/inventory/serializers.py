@@ -2,7 +2,7 @@
 from django.db import transaction
 from rest_framework import serializers
 from decimal import Decimal
-from .models import RawMaterial, Recipe, RecipeItem, MenuCategory, MenuItem, UnitOfMeasurement, PurchaseOrder, PurchaseOrderItem, StockTransaction
+from .models import RawMaterial, Recipe, RecipeItem, MenuCategory, MenuItem, UnitOfMeasurement, PurchaseOrder, PurchaseOrderItem, StockTransaction, CustomerOrder, OrderItem
 
 class UnitOfMeasurementSerializer(serializers.ModelSerializer):
     class Meta:
@@ -248,3 +248,176 @@ class StockOutSerializer(serializers.Serializer):
                 f"Insufficient stock. Available: {material.quantity} {material.unit}, Requested: {data['quantity']} {material.unit}"
             )
         return data
+
+
+# Customer Order Serializers
+class OrderItemSerializer(serializers.ModelSerializer):
+    """Serializer for order items"""
+    menu_item_name = serializers.CharField(source='menu_item.name', read_only=True)
+    menu_item_description = serializers.CharField(source='menu_item.description', read_only=True)
+    menu_item_picture = serializers.ImageField(source='menu_item.picture', read_only=True)
+    
+    class Meta:
+        model = OrderItem
+        fields = [
+            'id', 'menu_item', 'menu_item_name', 'menu_item_description', 'menu_item_picture',
+            'quantity', 'unit_price', 'total_price', 'special_instructions'
+        ]
+        read_only_fields = ['total_price']
+
+    def validate_menu_item(self, value):
+        """Ensure menu item is active"""
+        if not value.is_active:
+            raise serializers.ValidationError("This menu item is not available")
+        return value
+
+    def validate_quantity(self, value):
+        """Ensure quantity is positive"""
+        if value <= 0:
+            raise serializers.ValidationError("Quantity must be greater than 0")
+        return value
+
+
+class CustomerOrderSerializer(serializers.ModelSerializer):
+    """Serializer for customer orders"""
+    items = OrderItemSerializer(many=True, read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    processed_by_username = serializers.CharField(source='processed_by.username', read_only=True)
+    
+    class Meta:
+        model = CustomerOrder
+        fields = [
+            'id', 'customer_name', 'customer_phone', 'customer_email', 'special_requests',
+            'status', 'status_display', 'subtotal', 'tax_amount', 'total_amount',
+            'order_date', 'updated_at', 'processed_by', 'processed_by_username', 
+            'processed_by_name', 'notes', 'items'
+        ]
+        read_only_fields = ['total_amount', 'order_date', 'updated_at']
+
+
+class CustomerOrderCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating customer orders"""
+    items = OrderItemSerializer(many=True, write_only=True)
+    
+    class Meta:
+        model = CustomerOrder
+        fields = [
+            'customer_name', 'customer_phone', 'customer_email', 'special_requests',
+            'tax_amount', 'notes', 'items'
+        ]
+    
+    def to_representation(self, instance):
+        """Return the full order data including items and calculated fields"""
+        return CustomerOrderSerializer(instance).data
+    
+    def validate_items(self, value):
+        """Validate order items"""
+        if not value:
+            raise serializers.ValidationError("Order must have at least one item")
+        
+        # Check for duplicate menu items
+        menu_item_ids = [item['menu_item'].id for item in value]
+        if len(menu_item_ids) != len(set(menu_item_ids)):
+            raise serializers.ValidationError("Duplicate menu items are not allowed")
+        
+        return value
+    
+    def create(self, validated_data):
+        """Create order with items"""
+        items_data = validated_data.pop('items')
+        request = self.context.get('request')
+        
+        # Calculate subtotal
+        subtotal = Decimal('0.00')
+        for item_data in items_data:
+            menu_item = item_data['menu_item']
+            quantity = item_data['quantity']
+            unit_price = menu_item.price
+            item_data['unit_price'] = unit_price
+            subtotal += quantity * unit_price
+        
+        validated_data['subtotal'] = subtotal
+        
+        # Get the authenticated user for processing
+        if request and hasattr(request, 'user') and request.user.is_authenticated:
+            processed_by_user = request.user
+            processed_by_name = request.user.username
+        else:
+            processed_by_user = None
+            processed_by_name = "System"
+        
+        validated_data['processed_by'] = processed_by_user
+        validated_data['processed_by_name'] = processed_by_name
+        
+        # Create the order
+        with transaction.atomic():
+            order = CustomerOrder.objects.create(**validated_data)
+            
+            # Create order items
+            for item_data in items_data:
+                OrderItem.objects.create(order=order, **item_data)
+            
+            # Update inventory (stock out)
+            self.update_inventory(order)
+        
+        return order
+    
+    def update_inventory(self, order):
+        """Update inventory when order is created"""
+        for item in order.items.all():
+            if item.menu_item.recipe:
+                # Process recipe ingredients
+                for recipe_item in item.menu_item.recipe.items.all():
+                    # Calculate required quantity based on order quantity
+                    required_quantity = (recipe_item.quantity * item.quantity) / item.menu_item.recipe.yield_quantity
+                    
+                    # Update raw material stock
+                    material = recipe_item.raw_material
+                    if material.quantity < required_quantity:
+                        raise serializers.ValidationError(
+                            f"Insufficient stock for {material.name}. "
+                            f"Available: {material.quantity} {material.unit}, "
+                            f"Required: {required_quantity} {material.unit}"
+                        )
+                    
+                    material.quantity -= required_quantity
+                    material.save()
+                    
+                    # Create stock transaction record
+                    StockTransaction.objects.create(
+                        transaction_type='stock_out',
+                        raw_material=material,
+                        quantity=required_quantity,
+                        unit=material.unit,
+                        reference_number=f"ORDER-{order.id}",
+                        notes=f"Stock out for Order #{order.id} - {item.menu_item.name}",
+                        performed_by_name=order.processed_by_name or "System"
+                    )
+
+
+class OrderStatusUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating order status"""
+    
+    class Meta:
+        model = CustomerOrder
+        fields = ['status', 'notes']
+    
+    def validate_status(self, value):
+        """Validate status transitions"""
+        if self.instance:
+            current_status = self.instance.status
+            valid_transitions = {
+                'pending': ['confirmed', 'cancelled'],
+                'confirmed': ['preparing', 'cancelled'],
+                'preparing': ['ready', 'cancelled'],
+                'ready': ['completed'],
+                'completed': [],  # Final state
+                'cancelled': []    # Final state
+            }
+            
+            if value not in valid_transitions.get(current_status, []):
+                raise serializers.ValidationError(
+                    f"Cannot change status from {current_status} to {value}"
+                )
+        
+        return value
