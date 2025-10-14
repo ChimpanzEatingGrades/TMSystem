@@ -266,3 +266,127 @@ class StockTransaction(models.Model):
             self.quantity = abs(self.quantity)
         
         super().save(*args, **kwargs)
+
+
+class CustomerOrder(models.Model):
+    """Model for customer orders"""
+    
+    ORDER_STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('confirmed', 'Confirmed'),
+        ('preparing', 'Preparing'),
+        ('ready', 'Ready'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled'),
+    ]
+    
+    customer_name = models.CharField(max_length=150)
+    customer_phone = models.CharField(max_length=20, blank=True, null=True)
+    customer_email = models.EmailField(blank=True, null=True)
+    special_requests = models.TextField(blank=True, null=True)
+    
+    status = models.CharField(
+        max_length=20, 
+        choices=ORDER_STATUS_CHOICES, 
+        default='pending'
+    )
+    
+    subtotal = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        validators=[MinValueValidator(Decimal("0.00"))]
+    )
+    tax_amount = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0.00"))]
+    )
+    total_amount = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        validators=[MinValueValidator(Decimal("0.00"))]
+    )
+    
+    order_date = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    # Staff fields
+    processed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='processed_orders',
+        help_text="Staff member who processed this order"
+    )
+    processed_by_name = models.CharField(
+        max_length=150, 
+        blank=True, 
+        null=True,
+        help_text="Name of the staff member who processed this order"
+    )
+    
+    notes = models.TextField(blank=True, null=True)
+    
+    class Meta:
+        ordering = ['-order_date']
+        indexes = [
+            models.Index(fields=['status', 'order_date']),
+            models.Index(fields=['customer_name', 'order_date']),
+            models.Index(fields=['processed_by', 'order_date']),
+        ]
+    
+    def __str__(self):
+        return f"Order #{self.id} - {self.customer_name} ({self.get_status_display()})"
+    
+    def save(self, *args, **kwargs):
+        # Calculate total amount
+        self.total_amount = self.subtotal + self.tax_amount
+        super().save(*args, **kwargs)
+
+
+class OrderItem(models.Model):
+    """Model for individual items in a customer order"""
+    
+    order = models.ForeignKey(
+        CustomerOrder, 
+        on_delete=models.CASCADE, 
+        related_name="items"
+    )
+    menu_item = models.ForeignKey(
+        MenuItem, 
+        on_delete=models.PROTECT,
+        related_name="order_items"
+    )
+    quantity = models.PositiveIntegerField(
+        validators=[MinValueValidator(1)],
+        help_text="Quantity ordered"
+    )
+    unit_price = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        validators=[MinValueValidator(Decimal("0.00"))],
+        help_text="Price per unit at time of order"
+    )
+    total_price = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        validators=[MinValueValidator(Decimal("0.00"))],
+        help_text="Total price for this item (quantity * unit_price)"
+    )
+    
+    # Item customization
+    special_instructions = models.TextField(blank=True, null=True)
+    
+    class Meta:
+        ordering = ["menu_item__name"]
+        unique_together = ("order", "menu_item")
+    
+    def __str__(self):
+        return f"{self.menu_item.name} x{self.quantity} - ₱{self.total_price}"
+    
+    def save(self, *args, **kwargs):
+        # Calculate total price automatically
+        self.total_price = self.quantity * self.unit_price
+        super().save(*args, **kwargs)

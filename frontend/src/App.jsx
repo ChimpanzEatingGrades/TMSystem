@@ -13,6 +13,7 @@ import MenuFormPage from "./pages/MenuFormPage";
 import MenuItemsPage from "./components/MenuItems/MenuItemsPage";
 import DigitalMenu from "./pages/DigitalMenu"
 import ShoppingCart from "./pages/ShoppingCart"
+import OrderManagementPage from "./pages/OrderManagementPage"
 
 function Logout(){
   localStorage.clear()
@@ -39,6 +40,7 @@ function App() {
         <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>}
         />
         <Route path="/menu" element={<ProtectedRoute><MenuItemsPage /></ProtectedRoute>} />
+        <Route path="/orders" element={<ProtectedRoute><OrderManagementPage /></ProtectedRoute>} />
         {/* <Route path="/menu/new" element={<ProtectedRoute><MenuFormPage /></ProtectedRoute>} />
         <Route path="/menu/:id/edit" element={<ProtectedRoute><MenuFormPage /></ProtectedRoute>} /> */}
         <Route path="/" element={<LandingPage />} />

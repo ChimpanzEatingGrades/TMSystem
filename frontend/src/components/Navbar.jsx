@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
-import { Menu, X, ChefHat, User, LogOut, Home, Info } from "lucide-react"
+import { Menu, X, ChefHat, User, LogOut, Home, Info, ShoppingCart, ClipboardList } from "lucide-react"
 import { ACCESS_TOKEN, REFRESH_TOKEN } from "../constants"
 
 const Navbar = () => {
@@ -83,7 +83,7 @@ const Navbar = () => {
                   isActive("/shopping-cart") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
                 }`}
               >
-                <Home size={16} />
+                <ShoppingCart size={16} />
                 <span>Cart</span>
               </button>
 
@@ -117,6 +117,18 @@ const Navbar = () => {
                 >
                   <Info size={16} />
                   <span>Menu Mgmt</span>
+                </button>
+              )}
+
+            {isAuthenticated && (
+                <button
+                  onClick={() => handleNavigation("/orders")}
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center space-x-1 ${
+                    isActive("/orders") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
+                  }`}
+                >
+                  <ClipboardList size={16} />
+                  <span>Orders</span>
                 </button>
               )}
 
@@ -189,6 +201,26 @@ const Navbar = () => {
             </button>
 
             <button
+              onClick={() => handleNavigation("/digital-menu")}
+              className={`block px-3 py-2 rounded-md text-base font-medium w-full text-left transition-colors duration-200 flex items-center space-x-2 ${
+                isActive("/digital-menu") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
+              }`}
+            >
+              <Home size={16} />
+              <span>Menu</span>
+            </button>
+
+            <button
+              onClick={() => handleNavigation("/shopping-cart")}
+              className={`block px-3 py-2 rounded-md text-base font-medium w-full text-left transition-colors duration-200 flex items-center space-x-2 ${
+                isActive("/shopping-cart") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
+              }`}
+            >
+              <ShoppingCart size={16} />
+              <span>Cart</span>
+            </button>
+
+            <button
               onClick={() => handleNavigation("/about")}
               className={`block px-3 py-2 rounded-md text-base font-medium w-full text-left transition-colors duration-200 flex items-center space-x-2 ${
                 isActive("/about") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
@@ -206,6 +238,30 @@ const Navbar = () => {
               >
                 <Info size={16} />
                 <span>Inventory</span>
+              </button>
+            )}
+
+            {isAuthenticated && (
+              <button
+                onClick={() => handleNavigation("/menu")}
+                className={`block px-3 py-2 rounded-md text-base font-medium w-full text-left transition-colors duration-200 flex items-center space-x-2 ${
+                  isActive("/menu") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
+                }`}
+              >
+                <Info size={16} />
+                <span>Menu Mgmt</span>
+              </button>
+            )}
+
+            {isAuthenticated && (
+              <button
+                onClick={() => handleNavigation("/orders")}
+                className={`block px-3 py-2 rounded-md text-base font-medium w-full text-left transition-colors duration-200 flex items-center space-x-2 ${
+                  isActive("/orders") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
+                }`}
+              >
+                <ClipboardList size={16} />
+                <span>Orders</span>
               </button>
             )}
 

@@ -148,7 +148,7 @@ const StockHistory = () => {
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h3 className="text-lg font-semibold text-gray-900">Stock History</h3>
+        
         <div className="flex items-center gap-2 w-full max-w-sm">
           <input
             type="text"

@@ -13,6 +13,8 @@ from .models import (
     MenuCategory,
     MenuItem,
     StockTransaction,
+    CustomerOrder,
+    OrderItem,
 )
 from .serializers import (
     RawMaterialSerializer,
@@ -25,6 +27,9 @@ from .serializers import (
     MenuItemSerializer,
     StockTransactionSerializer,
     StockOutSerializer,
+    CustomerOrderSerializer,
+    CustomerOrderCreateSerializer,
+    OrderStatusUpdateSerializer,
 )
 
 
@@ -138,6 +143,15 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         return Response({
             "message": "Backend is working",
             "received_data": request.data,
+            "user": str(request.user) if request.user.is_authenticated else "Anonymous"
+        })
+
+    @action(detail=False, methods=["get"])
+    def test_orders(self, request):
+        """Test endpoint to verify orders API is working"""
+        return Response({
+            "message": "Orders API is working",
+            "orders_count": CustomerOrder.objects.count(),
             "user": str(request.user) if request.user.is_authenticated else "Anonymous"
         })
 
@@ -264,4 +278,232 @@ class StockOutViewSet(viewsets.ViewSet):
         """Get list of materials with available stock"""
         materials = RawMaterial.objects.filter(quantity__gt=0).order_by('name')
         serializer = RawMaterialSerializer(materials, many=True)
+        return Response(serializer.data)
+
+
+# -------------------
+# Customer Order Views
+# -------------------
+
+class CustomerOrderViewSet(viewsets.ModelViewSet):
+    """ViewSet for customer order management"""
+    queryset = CustomerOrder.objects.prefetch_related('items__menu_item').all()
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return CustomerOrderCreateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return OrderStatusUpdateSerializer
+        return CustomerOrderSerializer
+    
+    def get_permissions(self):
+        """Allow public access for creating orders, authenticated for management"""
+        if self.action in ['create', 'retrieve']:
+            return [AllowAny()]
+        return [IsAuthenticated()]
+    
+    def get_queryset(self):
+        """Filter orders based on user permissions and query parameters"""
+        queryset = super().get_queryset()
+        
+        # Filter by status if provided
+        status = self.request.query_params.get('status')
+        if status:
+            queryset = queryset.filter(status=status)
+        
+        # Filter by customer name if provided
+        customer_name = self.request.query_params.get('customer_name')
+        if customer_name:
+            queryset = queryset.filter(customer_name__icontains=customer_name)
+        
+        # Filter by date range if provided
+        date_from = self.request.query_params.get('date_from')
+        date_to = self.request.query_params.get('date_to')
+        if date_from:
+            queryset = queryset.filter(order_date__date__gte=date_from)
+        if date_to:
+            queryset = queryset.filter(order_date__date__lte=date_to)
+        
+        return queryset
+    
+    def create(self, request, *args, **kwargs):
+        """Create a new customer order"""
+        try:
+            serializer = self.get_serializer(data=request.data)
+            if serializer.is_valid():
+                order = serializer.save()
+                return Response(
+                    CustomerOrderSerializer(order).data, 
+                    status=status.HTTP_201_CREATED
+                )
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response(
+                {"error": str(e), "detail": "Failed to create order"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+    
+    def update(self, request, *args, **kwargs):
+        """Update order status (staff only)"""
+        try:
+            instance = self.get_object()
+            serializer = self.get_serializer(instance, data=request.data, partial=True)
+            if serializer.is_valid():
+                # Update processed_by fields
+                if request.user.is_authenticated:
+                    serializer.save(
+                        processed_by=request.user,
+                        processed_by_name=request.user.username
+                    )
+                else:
+                    serializer.save()
+                
+                return Response(
+                    CustomerOrderSerializer(instance).data,
+                    status=status.HTTP_200_OK
+                )
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response(
+                {"error": str(e), "detail": "Failed to update order"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+    
+    @action(detail=False, methods=['get'])
+    def pending(self, request):
+        """Get all pending orders"""
+        pending_orders = self.get_queryset().filter(status='pending').order_by('order_date')
+        serializer = self.get_serializer(pending_orders, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def today(self, request):
+        """Get today's orders"""
+        from django.utils import timezone
+        today = timezone.now().date()
+        today_orders = self.get_queryset().filter(order_date__date=today).order_by('-order_date')
+        serializer = self.get_serializer(today_orders, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        """Get order statistics"""
+        from django.db.models import Count, Sum
+        from django.utils import timezone
+        
+        today = timezone.now().date()
+        
+        stats = {
+            'total_orders': CustomerOrder.objects.count(),
+            'today_orders': CustomerOrder.objects.filter(order_date__date=today).count(),
+            'pending_orders': CustomerOrder.objects.filter(status='pending').count(),
+            'preparing_orders': CustomerOrder.objects.filter(status='preparing').count(),
+            'ready_orders': CustomerOrder.objects.filter(status='ready').count(),
+            'today_revenue': CustomerOrder.objects.filter(
+                order_date__date=today, 
+                status__in=['completed', 'ready']
+            ).aggregate(total=Sum('total_amount'))['total'] or 0,
+            'status_breakdown': CustomerOrder.objects.values('status').annotate(
+                count=Count('id')
+            ).order_by('status')
+        }
+        
+        return Response(stats)
+    
+    @action(detail=True, methods=['post'])
+    def confirm(self, request, pk=None):
+        """Confirm an order"""
+        order = self.get_object()
+        if order.status != 'pending':
+            return Response(
+                {"error": "Only pending orders can be confirmed"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        order.status = 'confirmed'
+        if request.user.is_authenticated:
+            order.processed_by = request.user
+            order.processed_by_name = request.user.username
+        order.save()
+        
+        serializer = CustomerOrderSerializer(order)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def start_preparing(self, request, pk=None):
+        """Start preparing an order"""
+        order = self.get_object()
+        if order.status != 'confirmed':
+            return Response(
+                {"error": "Only confirmed orders can be started"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        order.status = 'preparing'
+        if request.user.is_authenticated:
+            order.processed_by = request.user
+            order.processed_by_name = request.user.username
+        order.save()
+        
+        serializer = CustomerOrderSerializer(order)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def mark_ready(self, request, pk=None):
+        """Mark order as ready"""
+        order = self.get_object()
+        if order.status != 'preparing':
+            return Response(
+                {"error": "Only preparing orders can be marked as ready"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        order.status = 'ready'
+        if request.user.is_authenticated:
+            order.processed_by = request.user
+            order.processed_by_name = request.user.username
+        order.save()
+        
+        serializer = CustomerOrderSerializer(order)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def complete(self, request, pk=None):
+        """Complete an order"""
+        order = self.get_object()
+        if order.status != 'ready':
+            return Response(
+                {"error": "Only ready orders can be completed"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        order.status = 'completed'
+        if request.user.is_authenticated:
+            order.processed_by = request.user
+            order.processed_by_name = request.user.username
+        order.save()
+        
+        serializer = CustomerOrderSerializer(order)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        """Cancel an order"""
+        order = self.get_object()
+        if order.status in ['completed', 'cancelled']:
+            return Response(
+                {"error": "Cannot cancel completed or already cancelled orders"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        order.status = 'cancelled'
+        if request.user.is_authenticated:
+            order.processed_by = request.user
+            order.processed_by_name = request.user.username
+        order.save()
+        
+        serializer = CustomerOrderSerializer(order)
         return Response(serializer.data)

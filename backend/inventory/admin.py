@@ -1,6 +1,6 @@
 # inventory/admin.py
 from django.contrib import admin
-from .models import RawMaterial, Recipe, RecipeItem, MenuCategory, MenuItem
+from .models import RawMaterial, Recipe, RecipeItem, MenuCategory, MenuItem, CustomerOrder, OrderItem
 
 @admin.register(RawMaterial)
 class RawMaterialAdmin(admin.ModelAdmin):
@@ -35,3 +35,38 @@ class MenuItemAdmin(admin.ModelAdmin):
             "is_active", "created_at", "updated_at",)
     search_fields = ("name", "description")
     list_filter = ("is_active", "category")
+
+
+class OrderItemInline(admin.TabularInline):
+    model = OrderItem
+    extra = 0
+    readonly_fields = ('total_price',)
+
+
+@admin.register(CustomerOrder)
+class CustomerOrderAdmin(admin.ModelAdmin):
+    list_display = ("id", "customer_name", "status", "total_amount", "order_date", "processed_by_name")
+    search_fields = ("customer_name", "customer_phone", "customer_email")
+    list_filter = ("status", "order_date", "processed_by")
+    readonly_fields = ("order_date", "updated_at", "total_amount")
+    inlines = [OrderItemInline]
+    
+    fieldsets = (
+        ('Customer Information', {
+            'fields': ('customer_name', 'customer_phone', 'customer_email', 'special_requests')
+        }),
+        ('Order Details', {
+            'fields': ('status', 'subtotal', 'tax_amount', 'total_amount', 'order_date', 'updated_at')
+        }),
+        ('Staff Information', {
+            'fields': ('processed_by', 'processed_by_name', 'notes')
+        }),
+    )
+
+
+@admin.register(OrderItem)
+class OrderItemAdmin(admin.ModelAdmin):
+    list_display = ("id", "order", "menu_item", "quantity", "unit_price", "total_price")
+    search_fields = ("order__customer_name", "menu_item__name")
+    list_filter = ("order__status", "menu_item__category")
+    readonly_fields = ('total_price',)
