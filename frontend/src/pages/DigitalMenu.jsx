@@ -73,7 +73,9 @@ export default function CustomerMenuPage() {
       (!item.available_from || currentTime >= item.available_from) &&
       (!item.available_to || currentTime <= item.available_to)
 
-    return item.is_active && inDate && inTime
+    // Also require stock availability if provided by API
+    const inStock = typeof item.is_in_stock === 'boolean' ? item.is_in_stock : true
+    return item.is_active && inDate && inTime && inStock
   }
 
   const filterItems = () => {
@@ -199,6 +201,9 @@ export default function CustomerMenuPage() {
                 <h2 className="text-xl font-semibold">{item.name}</h2>
                 <p className="text-gray-600 text-sm flex-1">{item.description}</p>
                 <div className="mt-2 font-bold text-lg text-yellow-600">₱{item.price}</div>
+                {!item.is_in_stock && (
+                  <div className="mt-1 text-sm text-red-600 font-medium">Not available (low stock)</div>
+                )}
 
                 {/* Quantity + Add */}
                 <div className="flex items-center gap-3 mt-4">
@@ -219,9 +224,10 @@ export default function CustomerMenuPage() {
                   </div>
                   <button
                     onClick={() => addToCart(item)}
-                    className="flex-1 bg-yellow-400 hover:bg-yellow-500 text-black font-semibold py-2 rounded-lg"
+                    disabled={item.is_in_stock === false}
+                    className={`flex-1 text-black font-semibold py-2 rounded-lg ${item.is_in_stock === false ? 'bg-gray-300 cursor-not-allowed' : 'bg-yellow-400 hover:bg-yellow-500'}`}
                   >
-                    Add to Cart
+                    {item.is_in_stock === false ? 'Unavailable' : 'Add to Cart'}
                   </button>
                 </div>
               </div>

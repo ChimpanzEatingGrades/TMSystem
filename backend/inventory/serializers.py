@@ -78,16 +78,46 @@ class MenuItemSerializer(serializers.ModelSerializer):
         queryset=Recipe.objects.all(), source="recipe", write_only=True, allow_null=True, required=False
     )
     picture = serializers.ImageField(required=False, allow_null=True)
+    # Computed availability based on recipe stock
+    is_in_stock = serializers.SerializerMethodField()
+    available_portions = serializers.SerializerMethodField()
 
     class Meta:
         model = MenuItem
         fields = [
             "id", "name", "price", "picture",
             "valid_from", "valid_until", "description",
-            "available_from", "available_to",  # <-- ADD THESE
+            "available_from", "available_to",
             "recipe", "recipe_id", "category", "category_id",
             "is_active", "created_at", "updated_at",
+            # Availability
+            "is_in_stock", "available_portions",
         ]
+
+    def get_is_in_stock(self, obj):
+        portions = self.get_available_portions(obj)
+        return portions > 0
+
+    def get_available_portions(self, obj):
+        # If no recipe, treat as unlimited stock
+        if not obj.recipe:
+            return 999999
+        # Compute max portions based on limiting ingredient in recipe
+        try:
+            portions = []
+            yield_quantity = obj.recipe.yield_quantity or Decimal('1')
+            for recipe_item in obj.recipe.items.all():
+                material = recipe_item.raw_material
+                if not material or material.quantity is None or recipe_item.quantity is None or yield_quantity == 0:
+                    return 0
+                # portions = floor(material.quantity / (recipe_item.quantity / yield_quantity))
+                required_per_portion = recipe_item.quantity / yield_quantity
+                if required_per_portion <= 0:
+                    return 0
+                portions.append(int(material.quantity // required_per_portion))
+            return min(portions) if portions else 0
+        except Exception:
+            return 0
 
 class PurchaseOrderItemSerializer(serializers.ModelSerializer):
     unit_name = serializers.CharField(source='unit.name', read_only=True)
@@ -263,7 +293,8 @@ class OrderItemSerializer(serializers.ModelSerializer):
             'id', 'menu_item', 'menu_item_name', 'menu_item_description', 'menu_item_picture',
             'quantity', 'unit_price', 'total_price', 'special_instructions'
         ]
-        read_only_fields = ['total_price']
+        # unit_price is computed from MenuItem.price during order creation
+        read_only_fields = ['total_price', 'unit_price']
 
     def validate_menu_item(self, value):
         """Ensure menu item is active"""

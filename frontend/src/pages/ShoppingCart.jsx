@@ -17,15 +17,15 @@ function CheckoutModal({ order, subtotal, onClose, onOrderSubmitted }) {
       setIsSubmitting(true);
       setError(null);
 
-      // Validate order data
-      const validation = validateOrderData(order);
+      // Transform cart data to order format
+      const orderData = transformCartToOrder(order);
+
+      // Validate transformed order data (matches API schema)
+      const validation = validateOrderData(orderData);
       if (!validation.isValid) {
         setError("Please fill in all required fields");
         return;
       }
-
-      // Transform cart data to order format
-      const orderData = transformCartToOrder(order);
       
       // Submit order to backend
       const response = await createCustomerOrder(orderData);
@@ -42,7 +42,23 @@ function CheckoutModal({ order, subtotal, onClose, onOrderSubmitted }) {
       }
     } catch (error) {
       console.error('Error submitting order:', error);
-      setError(error.response?.data?.error || 'Failed to submit order. Please try again.');
+      // Prefer detailed backend validation/serializer errors if present
+      const data = error.response?.data;
+      if (data) {
+        if (typeof data === 'string') {
+          setError(data);
+        } else if (data.error) {
+          setError(data.error);
+        } else {
+          // Flatten field errors into a readable string
+          const messages = Object.entries(data)
+            .map(([field, msg]) => `${field}: ${Array.isArray(msg) ? msg.join(', ') : String(msg)}`)
+            .join(' | ');
+          setError(messages || 'Failed to submit order. Please try again.');
+        }
+      } else {
+        setError('Failed to submit order. Please try again.');
+      }
     } finally {
       setIsSubmitting(false);
     }
