@@ -1,142 +1,11 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Trash2, Plus, Minus, ArrowLeft, X, CheckCircle, Clock } from "lucide-react"
+import { Trash2, Plus, Minus, ArrowLeft, X } from "lucide-react"
 import Navbar from "../components/Navbar"
 import { QRCodeCanvas } from "qrcode.react"
-import { createCustomerOrder, transformCartToOrder, validateOrderData } from "../api/orders"
 
-function CheckoutModal({ order, subtotal, onClose, onOrderSubmitted }) {
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [orderSubmitted, setOrderSubmitted] = useState(false);
-  const [submittedOrder, setSubmittedOrder] = useState(null);
-  const [error, setError] = useState(null);
-
-  const handleSubmitOrder = async () => {
-    try {
-      setIsSubmitting(true);
-      setError(null);
-
-      // Transform cart data to order format
-      const orderData = transformCartToOrder(order);
-
-      // Validate transformed order data (matches API schema)
-      const validation = validateOrderData(orderData);
-      if (!validation.isValid) {
-        setError("Please fill in all required fields");
-        return;
-      }
-      
-      // Submit order to backend
-      const response = await createCustomerOrder(orderData);
-      
-      setSubmittedOrder(response.data);
-      setOrderSubmitted(true);
-      
-      // Clear localStorage
-      localStorage.removeItem("customer_order");
-      
-      // Notify parent component
-      if (onOrderSubmitted) {
-        onOrderSubmitted(response.data);
-      }
-    } catch (error) {
-      console.error('Error submitting order:', error);
-      // Prefer detailed backend validation/serializer errors if present
-      const data = error.response?.data;
-      if (data) {
-        if (typeof data === 'string') {
-          setError(data);
-        } else if (data.error) {
-          setError(data.error);
-        } else {
-          // Flatten field errors into a readable string
-          const messages = Object.entries(data)
-            .map(([field, msg]) => `${field}: ${Array.isArray(msg) ? msg.join(', ') : String(msg)}`)
-            .join(' | ');
-          setError(messages || 'Failed to submit order. Please try again.');
-        }
-      } else {
-        setError('Failed to submit order. Please try again.');
-      }
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  if (orderSubmitted && submittedOrder) {
-    return (
-      <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center">
-        <div className="bg-white rounded-xl p-6 max-w-md w-full relative">
-          {/* Close button */}
-          <button
-            onClick={onClose}
-            className="absolute top-3 right-3 text-gray-500 hover:text-black"
-          >
-            <X size={20} />
-          </button>
-
-          <div className="text-center">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <CheckCircle className="h-8 w-8 text-green-600" />
-            </div>
-            
-            <h2 className="text-xl font-bold text-gray-900 mb-2">
-              Order Submitted Successfully!
-            </h2>
-            
-            <p className="text-gray-600 mb-4">
-              Your order #{submittedOrder.id} has been received and is being processed.
-            </p>
-
-            {/* QR Code for the submitted order */}
-            <div className="flex justify-center mb-4">
-              <QRCodeCanvas
-                value={JSON.stringify({
-                  orderId: submittedOrder.id,
-                  customerName: submittedOrder.customer_name,
-                  total: submittedOrder.total_amount,
-                  status: submittedOrder.status
-                })}
-                size={300}
-                bgColor="#ffffff"
-                fgColor="#000000"
-                level="H"
-                includeMargin={true}
-              />
-            </div>
-
-            <div className="bg-gray-50 rounded-lg p-4 mb-4">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-gray-600">Order #:</span>
-                <span className="font-semibold">#{submittedOrder.id}</span>
-              </div>
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-gray-600">Customer:</span>
-                <span className="font-semibold">{submittedOrder.customer_name}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-gray-600">Total:</span>
-                <span className="font-bold text-lg">₱{submittedOrder.total_amount}</span>
-              </div>
-            </div>
-
-            <p className="text-sm text-gray-500 mb-4">
-              Please present this QR code to the cashier for payment.
-            </p>
-
-            <button
-              onClick={onClose}
-              className="w-full bg-yellow-400 hover:bg-yellow-500 text-black font-semibold py-3 rounded-lg"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
+function CheckoutModal({ order, subtotal, onClose }) {
   return (
     <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center">
       <div className="bg-white rounded-xl p-6 max-w-md w-full relative">
@@ -149,66 +18,24 @@ function CheckoutModal({ order, subtotal, onClose, onOrderSubmitted }) {
         </button>
 
         <h2 className="text-xl font-bold text-center mb-4">
-          Confirm Your Order
+          Present to Cashier
         </h2>
 
-        {/* Order Summary */}
-        <div className="mb-6">
-          <div className="bg-gray-50 rounded-lg p-4 mb-4">
-            <h3 className="font-semibold text-gray-900 mb-2">Order Summary</h3>
-            <div className="space-y-1 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Customer:</span>
-                <span className="font-medium">{order.name || 'Not provided'}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Items:</span>
-                <span className="font-medium">{order.cart.length} items</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Total:</span>
-                <span className="font-bold">₱{subtotal.toFixed(2)}</span>
-              </div>
-            </div>
-          </div>
-
-          {order.requests && (
-            <div className="bg-blue-50 rounded-lg p-4 mb-4">
-              <h4 className="font-medium text-blue-900 mb-1">Special Requests:</h4>
-              <p className="text-sm text-blue-800">{order.requests}</p>
-            </div>
-          )}
+        {/* QR Code */}
+        <div className="flex justify-center mb-4">
+          <QRCodeCanvas
+            value={JSON.stringify(order)}
+            size={200}
+            bgColor="#ffffff"
+            fgColor="#000000"
+            level="H"
+            includeMargin={true}
+          />
         </div>
 
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
-            <p className="text-sm text-red-800">{error}</p>
-          </div>
-        )}
-
-        {/* Action Buttons */}
-        <div className="flex space-x-3">
-          <button
-            onClick={onClose}
-            className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 border border-gray-300 rounded-lg hover:bg-gray-200 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmitOrder}
-            disabled={isSubmitting}
-            className="flex-1 bg-yellow-400 hover:bg-yellow-500 text-black font-semibold py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-          >
-            {isSubmitting ? (
-              <>
-                <Clock className="h-4 w-4 mr-2 animate-spin" />
-                Submitting...
-              </>
-            ) : (
-              'Submit Order'
-            )}
-          </button>
+        {/* Total */}
+        <div className="text-center text-lg font-semibold">
+          Total: ₱{subtotal.toFixed(2)}
         </div>
       </div>
     </div>
@@ -230,7 +57,6 @@ export default function ShoppingCartPage() {
 
   const { name, requests, cart } = order
   const [showModal, setShowModal] = useState(false)
-  const [orderSubmitted, setOrderSubmitted] = useState(false)
 
   // Keep localStorage updated
   useEffect(() => {
@@ -299,28 +125,7 @@ export default function ShoppingCartPage() {
           </a>
         </div>
 
-        {orderSubmitted ? (
-          <div className="bg-white p-8 rounded-xl border text-center">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <CheckCircle className="h-8 w-8 text-green-600" />
-            </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-2">Order Submitted!</h2>
-            <p className="text-gray-600 mb-4">Your order has been received and is being processed.</p>
-            <button
-              onClick={() => {
-                setOrderSubmitted(false);
-                setOrder({
-                  name: "",
-                  requests: "",
-                  cart: [],
-                });
-              }}
-              className="bg-yellow-400 hover:bg-yellow-500 text-black font-semibold py-2 px-4 rounded-lg"
-            >
-              Place Another Order
-            </button>
-          </div>
-        ) : cart.length === 0 ? (
+        {cart.length === 0 ? (
           <div className="bg-white p-8 rounded-xl border text-center text-gray-500">
             Your cart is empty.
           </div>
@@ -439,10 +244,6 @@ export default function ShoppingCartPage() {
           order={order}
           subtotal={subtotal}
           onClose={() => setShowModal(false)}
-          onOrderSubmitted={(submittedOrder) => {
-            setOrderSubmitted(true);
-            setShowModal(false);
-          }}
         />
       )}
     </div>
