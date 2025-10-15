@@ -10,7 +10,10 @@ import {
   Search,
   Calendar,
   User,
-  DollarSign
+  DollarSign,
+  Plus,
+  Trash2,
+  RefreshCw
 } from "lucide-react";
 import { 
   getCustomerOrders, 
@@ -20,20 +23,32 @@ import {
   markOrderReady, 
   completeOrder, 
   cancelOrder,
-  testOrdersAPI
+  testOrdersAPI,
+  createCustomerOrder
 } from "../../api/orders";
+import { getMenuItems } from "../../api/menu";
 
-const OrderManagement = () => {
+const OrderManagement = ({ externalShowCreateModal, externalSetShowCreateModal }) => {
   const [orders, setOrders] = useState([]);
   const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [menuItems, setMenuItems] = useState([]);
   const [filters, setFilters] = useState({
     status: '',
     customer_name: '',
     date_from: '',
     date_to: ''
+  });
+
+  // Create order form state
+  const [newOrder, setNewOrder] = useState({
+    customer_name: '',
+    special_requests: '',
+    notes: '',
+    items: []
   });
 
   const statusConfig = {
@@ -72,7 +87,23 @@ const OrderManagement = () => {
   useEffect(() => {
     fetchOrders();
     fetchStats();
+    fetchMenuItems();
   }, [filters]);
+
+  // Sync external modal state with internal state
+  useEffect(() => {
+    if (externalShowCreateModal !== undefined) {
+      setShowCreateModal(externalShowCreateModal);
+    }
+  }, [externalShowCreateModal]);
+
+  // Update external state when internal state changes
+  const handleSetShowCreateModal = (value) => {
+    setShowCreateModal(value);
+    if (externalSetShowCreateModal) {
+      externalSetShowCreateModal(value);
+    }
+  };
 
   const fetchOrders = async () => {
     try {
@@ -92,6 +123,15 @@ const OrderManagement = () => {
       setStats(response.data);
     } catch (error) {
       console.error('Error fetching stats:', error);
+    }
+  };
+
+  const fetchMenuItems = async () => {
+    try {
+      const response = await getMenuItems();
+      setMenuItems(response.data.filter(item => item.is_active));
+    } catch (error) {
+      console.error('Error fetching menu items:', error);
     }
   };
 
@@ -140,6 +180,80 @@ const OrderManagement = () => {
       console.error('Error updating order status:', error);
       alert('Failed to update order status');
     }
+  };
+
+  const handleCreateOrder = async () => {
+    try {
+      // Validate form
+      if (!newOrder.customer_name.trim()) {
+        alert('Please enter customer name');
+        return;
+      }
+      
+      if (newOrder.items.length === 0) {
+        alert('Please add at least one item');
+        return;
+      }
+
+      const response = await createCustomerOrder(newOrder);
+      
+      // Add the new order to the list
+      setOrders([response.data, ...orders]);
+      
+      // Reset form and close modal
+      resetCreateForm();
+      setShowCreateModal(false);
+      
+      // Refresh stats
+      fetchStats();
+      
+      alert('Order created successfully!');
+    } catch (error) {
+      console.error('Error creating order:', error);
+      alert(error.response?.data?.error || 'Failed to create order');
+    }
+  };
+
+  const resetCreateForm = () => {
+    setNewOrder({
+      customer_name: '',
+      special_requests: '',
+      notes: '',
+      items: []
+    });
+  };
+
+  const addOrderItem = () => {
+    setNewOrder(prev => ({
+      ...prev,
+      items: [...prev.items, { menu_item: '', quantity: 1, special_instructions: '' }]
+    }));
+  };
+
+  const removeOrderItem = (index) => {
+    setNewOrder(prev => ({
+      ...prev,
+      items: prev.items.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateOrderItem = (index, field, value) => {
+    setNewOrder(prev => ({
+      ...prev,
+      items: prev.items.map((item, i) => 
+        i === index ? { ...item, [field]: value } : item
+      )
+    }));
+  };
+
+  const calculateOrderTotal = () => {
+    const subtotal = newOrder.items.reduce((sum, item) => {
+      const menuItem = menuItems.find(m => m.id === parseInt(item.menu_item));
+      return sum + (menuItem ? menuItem.price * item.quantity : 0);
+    }, 0);
+    
+    const tax = 0;
+    return { subtotal, tax, total: subtotal + tax };
   };
 
   const getStatusActions = (status) => {
@@ -218,12 +332,21 @@ const OrderManagement = () => {
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Order Management</h1>
               <p className="text-gray-600">Manage customer orders and track their status</p>
             </div>
-            <button
-              onClick={testAPI}
-              className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium"
-            >
-              Test API
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={() => handleSetShowCreateModal(true)}
+                className="px-6 py-3 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-medium flex items-center gap-2 shadow-lg hover:shadow-xl transition-all"
+              >
+                <Plus className="h-5 w-5" />
+                Create New Order
+              </button>
+              <button
+                onClick={testAPI}
+                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium"
+              >
+                Test API
+              </button>
+            </div>
           </div>
         </div>
 
@@ -360,8 +483,16 @@ const OrderManagement = () => {
 
         {/* Orders Table */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200">
+          <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
             <h3 className="text-lg font-semibold text-gray-900">Orders</h3>
+            <button
+              onClick={fetchOrders}
+              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+              title="Refresh orders"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Refresh
+            </button>
           </div>
           
           <div className="overflow-x-auto">
@@ -463,6 +594,24 @@ const OrderManagement = () => {
         </div>
       </div>
 
+      {/* Create Order Modal */}
+      {showCreateModal && (
+        <CreateOrderModal
+          newOrder={newOrder}
+          setNewOrder={setNewOrder}
+          menuItems={menuItems}
+          onClose={() => {
+            handleSetShowCreateModal(false);
+            resetCreateForm();
+          }}
+          onSubmit={handleCreateOrder}
+          addOrderItem={addOrderItem}
+          removeOrderItem={removeOrderItem}
+          updateOrderItem={updateOrderItem}
+          calculateOrderTotal={calculateOrderTotal}
+        />
+      )}
+
       {/* Order Details Modal */}
       {showOrderModal && selectedOrder && (
         <OrderDetailsModal
@@ -474,6 +623,206 @@ const OrderManagement = () => {
           onStatusChange={handleStatusChange}
         />
       )}
+    </div>
+  );
+};
+
+// Create Order Modal Component
+const CreateOrderModal = ({ 
+  newOrder, 
+  setNewOrder, 
+  menuItems, 
+  onClose, 
+  onSubmit,
+  addOrderItem,
+  removeOrderItem,
+  updateOrderItem,
+  calculateOrderTotal
+}) => {
+  const { subtotal, tax, total } = calculateOrderTotal();
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="p-6">
+          {/* Header */}
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold text-gray-900">Create New Order</h2>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+              <XCircle className="h-6 w-6" />
+            </button>
+          </div>
+
+          {/* Customer Information */}
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Customer Information</h3>
+            <div className="grid grid-cols-1 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Customer Name *
+                </label>
+                <input
+                  type="text"
+                  value={newOrder.customer_name}
+                  onChange={(e) => setNewOrder({ ...newOrder, customer_name: e.target.value })}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                  placeholder="Enter customer name"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Special Requests
+                </label>
+                <textarea
+                  value={newOrder.special_requests}
+                  onChange={(e) => setNewOrder({ ...newOrder, special_requests: e.target.value })}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                  rows="2"
+                  placeholder="Any special requests..."
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Staff Notes
+                </label>
+                <textarea
+                  value={newOrder.notes}
+                  onChange={(e) => setNewOrder({ ...newOrder, notes: e.target.value })}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                  rows="2"
+                  placeholder="Internal notes..."
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Order Items */}
+          <div className="mb-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Order Items</h3>
+              <button
+                onClick={addOrderItem}
+                className="px-3 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded-md text-sm flex items-center gap-1"
+              >
+                <Plus className="h-4 w-4" />
+                Add Item
+              </button>
+            </div>
+            
+            <div className="space-y-3">
+              {newOrder.items.map((item, index) => {
+                const menuItem = menuItems.find(m => m.id === parseInt(item.menu_item));
+                const itemTotal = menuItem ? menuItem.price * item.quantity : 0;
+                
+                return (
+                  <div key={index} className="border border-gray-200 rounded-lg p-4">
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                      <div className="md:col-span-5">
+                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                          Menu Item *
+                        </label>
+                        <select
+                          value={item.menu_item}
+                          onChange={(e) => updateOrderItem(index, 'menu_item', e.target.value)}
+                          className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                        >
+                          <option value="">Select item...</option>
+                          {menuItems.map(menuItem => (
+                            <option key={menuItem.id} value={menuItem.id}>
+                              {menuItem.name} - ₱{menuItem.price}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      
+                      <div className="md:col-span-2">
+                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                          Quantity *
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={item.quantity}
+                          onChange={(e) => updateOrderItem(index, 'quantity', parseInt(e.target.value) || 1)}
+                          className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                        />
+                      </div>
+                      
+                      <div className="md:col-span-4">
+                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                          Special Instructions
+                        </label>
+                        <input
+                          type="text"
+                          value={item.special_instructions}
+                          onChange={(e) => updateOrderItem(index, 'special_instructions', e.target.value)}
+                          className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                          placeholder="Optional..."
+                        />
+                      </div>
+                      
+                      <div className="md:col-span-1 flex items-end">
+                        <button
+                          onClick={() => removeOrderItem(index)}
+                          className="w-full px-2 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-md text-sm"
+                          title="Remove item"
+                        >
+                          <Trash2 className="h-4 w-4 mx-auto" />
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {menuItem && (
+                      <div className="mt-2 text-sm text-gray-600">
+                        Item Total: ₱{itemTotal.toFixed(2)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              
+              {newOrder.items.length === 0 && (
+                <div className="text-center py-8 text-gray-500">
+                  No items added. Click "Add Item" to start.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Order Summary */}
+          <div className="border-t border-gray-200 pt-4 mb-6">
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Subtotal:</span>
+                <span className="font-medium">₱{subtotal.toFixed(2)}</span>
+              </div>
+              
+              <div className="flex justify-between text-lg font-bold border-t border-gray-200 pt-2">
+                <span>Total:</span>
+                <span>₱{total.toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex justify-end space-x-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={onSubmit}
+              className="px-4 py-2 text-sm font-medium text-white bg-yellow-500 rounded-md hover:bg-yellow-600"
+            >
+              Create Order
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

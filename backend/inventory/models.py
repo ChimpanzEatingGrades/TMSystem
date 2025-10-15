@@ -4,6 +4,7 @@ from django.db.models.functions import Lower
 from django.core.validators import MinValueValidator
 from django.core.exceptions import ValidationError
 from django.contrib.auth.models import User
+from django.utils import timezone
 
 class UnitOfMeasurement(models.Model):
     """Model for managing units of measurement"""
@@ -21,8 +22,22 @@ class UnitOfMeasurement(models.Model):
 
 class RawMaterial(models.Model):
     """Model for raw ingredients/materials in inventory"""
+    
+    MATERIAL_TYPES = [
+        ('raw', 'Raw Material'),           # Needs processing (meat, vegetables, flour)
+        ('processed', 'Processed Good'),   # Ready to use (sodas, condiments, canned goods)
+        ('semi_processed', 'Semi-Processed'), # Partially processed (ground meat, chopped vegetables)
+        ('supplies', 'Supplies & Utensils'),  # Non-consumable items (spoons, gloves, napkins, containers)
+    ]
+    
     name = models.CharField(max_length=150, unique=True)
     unit = models.CharField(max_length=50)  # e.g. "g", "ml", "pcs"
+    material_type = models.CharField(
+        max_length=20,
+        choices=MATERIAL_TYPES,
+        default='raw',
+        help_text="Type of material - raw, processed, semi-processed, or supplies"
+    )
     quantity = models.DecimalField(
         max_digits=12,
         decimal_places=3,
@@ -30,10 +45,29 @@ class RawMaterial(models.Model):
         validators=[MinValueValidator(Decimal("0.000"))],
         help_text="Current stock quantity"
     )
+    # New fields for stock management
+    minimum_threshold = models.DecimalField(
+        max_digits=12, 
+        decimal_places=3, 
+        default=10,
+        help_text="Minimum quantity before low stock alert"
+    )
+    reorder_level = models.DecimalField(
+        max_digits=12, 
+        decimal_places=3, 
+        default=20,
+        help_text="Quantity level to trigger reorder"
+    )
+    shelf_life_days = models.PositiveIntegerField(
+        null=True,  # Allow null for supplies/utensils
+        blank=True,  # Allow blank in forms
+        help_text="Number of days this material stays fresh after purchase. Leave empty for non-perishable items."
+    )
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.name} ({self.quantity} {self.unit})"
+        return f"{self.name} ({self.quantity} {self.unit}) - {self.get_material_type_display()}"
 
     class Meta:
         ordering = ["name"]
@@ -43,6 +77,61 @@ class RawMaterial(models.Model):
                 Lower("name"), name="uniq_rawmaterial_name_ci"
             )
         ]
+
+    @property
+    def is_low_stock(self):
+        """Check if stock is below minimum threshold"""
+        return self.quantity <= self.minimum_threshold
+    
+    @property
+    def needs_reorder(self):
+        """Check if stock needs reordering"""
+        return self.quantity <= self.reorder_level
+    
+    @property
+    def is_raw_material(self):
+        """Check if this is a raw material"""
+        return self.material_type == 'raw'
+    
+    @property
+    def is_processed(self):
+        """Check if this is a processed good"""
+        return self.material_type == 'processed'
+    
+    @property
+    def is_supplies(self):
+        """Check if this is a supply item"""
+        return self.material_type == 'supplies'
+    
+    def get_expired_batches(self):
+        """Get all expired batches for this material"""
+        from django.utils import timezone
+        return self.batches.filter(expiry_date__lt=timezone.now().date())
+    
+    def get_expiring_soon_batches(self):
+        """Get batches expiring within 2 days"""
+        from django.utils import timezone
+        from datetime import timedelta
+        threshold = timezone.now().date() + timedelta(days=2)
+        return self.batches.filter(
+            expiry_date__lte=threshold,
+            expiry_date__gte=timezone.now().date()
+        )
+    
+    def save(self, *args, **kwargs):
+        # Auto-set shelf_life_days to None for supplies
+        if self.material_type == 'supplies':
+            self.shelf_life_days = None
+        # Set default shelf life for other types if not provided
+        elif self.shelf_life_days is None:
+            if self.material_type == 'raw':
+                self.shelf_life_days = 7  # Default for raw materials
+            elif self.material_type == 'processed':
+                self.shelf_life_days = 180  # Default for processed (6 months)
+            elif self.material_type == 'semi_processed':
+                self.shelf_life_days = 14  # Default for semi-processed
+        
+        super().save(*args, **kwargs)
 
 
 class Recipe(models.Model):
@@ -188,6 +277,21 @@ class PurchaseOrderItem(models.Model):
     )
     total_price = models.DecimalField(
         max_digits=10, decimal_places=2, validators=[MinValueValidator(0)]
+    )
+    expiry_date = models.DateField(
+        null=True, 
+        blank=True,
+        help_text="Expiration date of this item"
+    )
+    shelf_life_days = models.PositiveIntegerField(
+        null=True,  # Add this
+        blank=True,  # Add this
+        help_text="Shelf life in days for this specific purchase batch"
+    )
+    material_type = models.CharField(
+        max_length=20,
+        default='raw',
+        help_text="Type of material for new materials"
     )
 
     def save(self, *args, **kwargs):
@@ -389,4 +493,111 @@ class OrderItem(models.Model):
     def save(self, *args, **kwargs):
         # Calculate total price automatically
         self.total_price = self.quantity * self.unit_price
+        super().save(*args, **kwargs)
+
+
+class StockAlert(models.Model):
+    """Model to track stock alerts and notifications"""
+    ALERT_TYPES = [
+        ('low_stock', 'Low Stock'),
+        ('out_of_stock', 'Out of Stock'),
+        ('expiring_soon', 'Expiring Soon'),
+        ('expired', 'Expired'),
+        ('reorder', 'Reorder Level'),
+    ]
+    
+    ALERT_STATUS = [
+        ('active', 'Active'),
+        ('acknowledged', 'Acknowledged'),
+        ('resolved', 'Resolved'),
+    ]
+    
+    raw_material = models.ForeignKey(RawMaterial, on_delete=models.CASCADE, related_name='alerts')
+    alert_type = models.CharField(max_length=20, choices=ALERT_TYPES)
+    status = models.CharField(max_length=20, choices=ALERT_STATUS, default='active')
+    message = models.TextField()
+    current_quantity = models.DecimalField(max_digits=12, decimal_places=3)
+    threshold_value = models.DecimalField(max_digits=12, decimal_places=3, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+    acknowledged_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='acknowledged_alerts')
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.get_alert_type_display()} - {self.raw_material.name}"
+    
+    def acknowledge(self, user=None):
+        """Mark alert as acknowledged"""
+        self.status = 'acknowledged'
+        self.acknowledged_at = timezone.now()
+        if user:
+            self.acknowledged_by = user
+        self.save()
+    
+    def resolve(self):
+        """Mark alert as resolved"""
+        self.status = 'resolved'
+        self.resolved_at = timezone.now()
+        self.save()
+
+
+class StockBatch(models.Model):
+    """Model to track individual batches of materials with their own expiry dates"""
+    raw_material = models.ForeignKey(
+        RawMaterial,
+        on_delete=models.CASCADE,
+        related_name='batches'
+    )
+    purchase_order = models.ForeignKey(
+        'PurchaseOrder',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='stock_batches'
+    )
+    quantity = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        validators=[MinValueValidator(Decimal("0.001"))],
+        help_text="Quantity in this batch"
+    )
+    purchase_date = models.DateField(help_text="Date this batch was purchased")
+    expiry_date = models.DateField(help_text="Date this batch expires")
+    is_expired = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['expiry_date']  # FIFO - First to expire, first out
+        verbose_name_plural = 'Stock Batches'
+    
+    def __str__(self):
+        return f"{self.raw_material.name} - {self.quantity} {self.raw_material.unit} (Expires: {self.expiry_date})"
+    
+    @property
+    def days_until_expiry(self):
+        """Calculate days until expiry"""
+        from django.utils import timezone
+        delta = self.expiry_date - timezone.now().date()
+        return delta.days
+    
+    @property
+    def is_expiring_soon(self):
+        """Check if batch is expiring within 2 days"""
+        days = self.days_until_expiry
+        return 0 <= days <= 2
+    
+    def save(self, *args, **kwargs):
+        # Auto-calculate expiry date based on shelf life
+        if not self.expiry_date and self.purchase_date and self.raw_material:
+            from datetime import timedelta
+            self.expiry_date = self.purchase_date + timedelta(days=self.raw_material.shelf_life_days)
+        
+        # Check if expired
+        from django.utils import timezone
+        if self.expiry_date < timezone.now().date():
+            self.is_expired = True
+        
         super().save(*args, **kwargs)

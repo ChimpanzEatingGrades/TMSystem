@@ -1,6 +1,17 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import RawMaterialViewSet, UnitOfMeasurementViewSet, PurchaseOrderViewSet, MenuCategoryViewSet, RecipeViewSet, MenuItemViewSet, StockTransactionViewSet, StockOutViewSet, CustomerOrderViewSet
+from .views import (
+    RawMaterialViewSet, 
+    UnitOfMeasurementViewSet, 
+    PurchaseOrderViewSet, 
+    MenuCategoryViewSet, 
+    RecipeViewSet, 
+    MenuItemViewSet, 
+    StockTransactionViewSet, 
+    StockOutViewSet, 
+    CustomerOrderViewSet,
+    StockAlertViewSet
+)
 from django.conf import settings
 from django.conf.urls.static import static
 
@@ -14,6 +25,7 @@ router.register(r'purchase-orders', PurchaseOrderViewSet)
 router.register(r'stock-transactions', StockTransactionViewSet)
 router.register(r'stock-out', StockOutViewSet, basename='stock-out')
 router.register(r'customer-orders', CustomerOrderViewSet, basename='customer-order')
+router.register(r'stock-alerts', StockAlertViewSet, basename='stock-alert')
 
 urlpatterns = [
     path("", include(router.urls)),

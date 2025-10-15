@@ -2,7 +2,6 @@
 import { useState, useEffect } from "react"
 import {
   Package,
-  Plus,
   ShoppingCart,
   Minus,
   History,
@@ -12,6 +11,7 @@ import {
   Save,
   X,
   AlertTriangle,
+  RefreshCw,
 } from "lucide-react"
 import api from "../api"
 import Navbar from "../components/Navbar"
@@ -24,21 +24,33 @@ import ClearInventoryModal from "../components/ClearInventoryModal"
 import ErrorBoundary from "../components/ErrorBoundary"
 
 export default function Inventory() {
+  // State
   const [materials, setMaterials] = useState([])
-  const [name, setName] = useState("")
-  const [quantity, setQuantity] = useState("")
-  const [unit, setUnit] = useState("kg")
   const [units, setUnits] = useState([])
+  const [purchaseOrders, setPurchaseOrders] = useState([])
   const [error, setError] = useState("")
+  const [inventorySort, setInventorySort] = useState("alpha_asc")
+  const [inventoryQuery, setInventoryQuery] = useState("")
+  const [refreshing, setRefreshing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  
+  // Modal states
   const [showPurchaseModal, setShowPurchaseModal] = useState(false)
   const [showUnitModal, setShowUnitModal] = useState(false)
   const [showStockOutModal, setShowStockOutModal] = useState(false)
   const [showClearInventoryModal, setShowClearInventoryModal] = useState(false)
-  const [purchaseOrders, setPurchaseOrders] = useState([])
+  
+  // Edit state
   const [editingMaterial, setEditingMaterial] = useState(null)
-  const [editForm, setEditForm] = useState({ name: "", quantity: "", unit: "" })
-  const [inventorySort, setInventorySort] = useState("alpha_asc")
-  const [inventoryQuery, setInventoryQuery] = useState("")
+  const [editForm, setEditForm] = useState({
+    name: "",
+    quantity: "",
+    unit: "",
+    material_type: "raw",
+    minimum_threshold: "",
+    reorder_level: "",
+    shelf_life_days: ""
+  })
 
   // Load initial data
   useEffect(() => {
@@ -76,37 +88,74 @@ export default function Inventory() {
     }
   }
 
-  // Raw material actions
+  // Edit handlers
+  const handleEditMaterial = (material) => {
+    setEditingMaterial(material.id)
+    setEditForm({
+      name: material.name,
+      quantity: material.quantity.toString(),
+      unit: material.unit,
+      material_type: material.material_type || 'raw',
+      minimum_threshold: material.minimum_threshold?.toString() || '10',
+      reorder_level: material.reorder_level?.toString() || '20',
+      shelf_life_days: material.shelf_life_days?.toString() || '7',
+    })
+  }
 
-  const handleAddMaterial = async (e) => {
-    e.preventDefault()
+  const handleUpdateMaterial = async (id) => {
+    if (saving) return
+    
     try {
-      const res = await api.post("/inventory/rawmaterials/", {
-        name,
-        quantity,
-        unit,
-      })
-      setMaterials((prev) => [...prev, res.data])
-      setName("")
-      setQuantity("")
-      setUnit("kg")
-      setError("")
-    } catch (err) {
-      console.error(err)
-      const nameErr = Array.isArray(err.response?.data?.name) ? err.response.data.name[0] : err.response?.data?.name
-      let baseDetail = err.response?.data?.detail || nameErr || err.message
-      if (typeof baseDetail === "string") {
-        baseDetail = baseDetail.replace(/\s*$$case-insensitive$$\.?/i, "").trim()
+      setSaving(true)
+      
+      const updateData = {
+        name: editForm.name,
+        quantity: parseFloat(editForm.quantity),
+        unit: editForm.unit,
+        material_type: editForm.material_type,
+        minimum_threshold: parseFloat(editForm.minimum_threshold),
+        reorder_level: parseFloat(editForm.reorder_level),
       }
-      const duplicateMsg =
-        nameErr || (typeof baseDetail === "string" && baseDetail.toLowerCase().includes("exists"))
-          ? "Invalid input, material already made."
-          : ""
-      const finalMsg = duplicateMsg
-        ? `${duplicateMsg} ${baseDetail ? `(${baseDetail})` : ""}`.trim()
-        : `Could not add material. ${baseDetail}`
-      setError(finalMsg)
+      
+      // Only add shelf_life_days if material is NOT supplies
+      if (editForm.material_type !== 'supplies') {
+        updateData.shelf_life_days = parseInt(editForm.shelf_life_days)
+      }
+      
+      const res = await api.put(`/inventory/rawmaterials/${id}/`, updateData)
+      
+      setEditingMaterial(null)
+      setEditForm({
+        name: "",
+        quantity: "",
+        unit: "",
+        material_type: "raw",
+        minimum_threshold: "",
+        reorder_level: "",
+        shelf_life_days: ""
+      })
+      setError("")
+      
+      setMaterials((prev) => prev.map((m) => (m.id === id ? res.data : m)))
+    } catch (err) {
+      console.error('Update error:', err)
+      setError(`Failed to update material: ${err.response?.data?.detail || err.message}`)
+    } finally {
+      setSaving(false)
     }
+  }
+
+  const handleCancelEdit = () => {
+    setEditingMaterial(null)
+    setEditForm({
+      name: "",
+      quantity: "",
+      unit: "",
+      material_type: "raw",
+      minimum_threshold: "",
+      reorder_level: "",
+      shelf_life_days: ""
+    })
   }
 
   const handleDeleteMaterial = async (id) => {
@@ -119,34 +168,7 @@ export default function Inventory() {
     }
   }
 
-  const handleEditMaterial = (material) => {
-    setEditingMaterial(material.id)
-    setEditForm({
-      name: material.name,
-      quantity: material.quantity.toString(),
-      unit: material.unit,
-    })
-  }
-
-  const handleUpdateMaterial = async (id) => {
-    try {
-      const res = await api.put(`/inventory/rawmaterials/${id}/`, editForm)
-      setMaterials((prev) => prev.map((m) => (m.id === id ? res.data : m)))
-      setEditingMaterial(null)
-      setEditForm({ name: "", quantity: "", unit: "" })
-      setError("")
-    } catch (err) {
-      console.error(err)
-      setError(`Failed to update material: ${err.response?.data?.detail || err.message}`)
-    }
-  }
-
-  const handleCancelEdit = () => {
-    setEditingMaterial(null)
-    setEditForm({ name: "", quantity: "", unit: "" })
-  }
-
-  // Called after creating a new purchase order
+  // Success handlers
   const handlePurchaseSuccess = (newOrder) => {
     try {
       if (newOrder) {
@@ -154,7 +176,6 @@ export default function Inventory() {
       } else {
         fetchPurchaseOrders()
       }
-      // Refresh materials list to show updated inventory
       fetchMaterials()
     } catch (error) {
       console.error("Error in handlePurchaseSuccess:", error)
@@ -162,31 +183,36 @@ export default function Inventory() {
     }
   }
 
-  // Handle purchase order list changes (e.g., when deleting)
   const handlePurchaseOrdersChange = (updatedOrders) => {
     setPurchaseOrders(updatedOrders)
   }
 
   const handleUnitSuccess = () => fetchUnits()
 
-  // Handle stock out success
   const handleStockOutSuccess = (data) => {
-    // Refresh materials list to show updated inventory
     fetchMaterials()
     setError("")
-    // You could also show a success message here
-    console.log("Stock out successful:", data)
   }
 
-  // Handle clear inventory success
   const handleClearInventorySuccess = (data) => {
-    // Clear all local state
     setMaterials([])
     setPurchaseOrders([])
     setError("")
-    console.log("Inventory cleared successfully:", data)
   }
 
+  const handleRefreshInventory = async () => {
+    setRefreshing(true)
+    try {
+      await fetchMaterials()
+    } catch (error) {
+      console.error("Error refreshing inventory:", error)
+      setError("Failed to refresh inventory")
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  // Sorting and filtering
   const sortedMaterials = [...(materials || [])].sort((a, b) => {
     switch (inventorySort) {
       case "alpha_asc":
@@ -194,20 +220,16 @@ export default function Inventory() {
       case "alpha_desc":
         return (b.name || "").localeCompare(a.name || "")
       case "time_desc":
-        return (
-          (new Date(b.created_at || 0).getTime() || b.id || 0) - (new Date(a.created_at || 0).getTime() || a.id || 0)
-        )
+        return (new Date(b.created_at || 0).getTime() || b.id || 0) - (new Date(a.created_at || 0).getTime() || a.id || 0)
       case "time_asc":
-        return (
-          (new Date(a.created_at || 0).getTime() || a.id || 0) - (new Date(b.created_at || 0).getTime() || b.id || 0)
-        )
+        return (new Date(a.created_at || 0).getTime() || a.id || 0) - (new Date(b.created_at || 0).getTime() || b.id || 0)
       default:
         return 0
     }
   })
 
   const filteredMaterials = sortedMaterials.filter((m) =>
-    (m.name || "").toLowerCase().includes(inventoryQuery.trim().toLowerCase()),
+    (m.name || "").toLowerCase().includes(inventoryQuery.trim().toLowerCase())
   )
 
   return (
@@ -215,7 +237,8 @@ export default function Inventory() {
       <div className="min-h-screen bg-gray-50">
         <Navbar />
 
-        <div className="max-w-screen-2xl mx-auto px-6 py-8">
+        <div className="max-w-full mx-auto px-6 py-8">
+          {/* Header */}
           <div className="flex flex-col lg:flex-row lg:items-center justify-between mb-8">
             <div className="mb-6 lg:mb-0">
               <h1 className="text-4xl font-bold text-gray-900 mb-3 flex items-center gap-4">
@@ -272,255 +295,290 @@ export default function Inventory() {
               </div>
             </div>
           )}
-          {/*}
-          <div className="bg-white rounded-2xl p-8 mb-8 shadow-sm border border-gray-200">
-            <h2 className="text-2xl font-semibold text-gray-900 mb-6 flex items-center gap-3">
-              <div className="p-2 bg-yellow-100 rounded-lg border border-yellow-200">
-                <Plus className="text-yellow-600" size={24} />
-              </div>
-              Add Raw Material
-            </h2>
-            <form onSubmit={handleAddMaterial} className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Material Name</label>
-                <input
-                  type="text"
-                  placeholder="Enter material name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-white border border-gray-300 rounded-xl px-4 py-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all duration-200"
-                  required
-                />
+
+          {/* Threshold Information Panel */}
+      { /*   <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+            <h3 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
+              <AlertTriangle size={18} />
+              Stock Threshold Guide
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-blue-800">
+              <div>
+                <span className="font-medium">Minimum Threshold:</span>
+                <p className="text-xs mt-1">When stock reaches this level, you'll get a "Low Stock" alert.</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Quantity</label>
-                <input
-                  type="number"
-                  placeholder="0.00"
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                  className="w-full bg-white border border-gray-300 rounded-xl px-4 py-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all duration-200"
-                  step="0.01"
-                  min="0"
-                  required
-                />
+                <span className="font-medium">Reorder Level:</span>
+                <p className="text-xs mt-1">When stock reaches this level, you'll get a "Reorder" alert.</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Unit</label>
-                <div className="flex gap-3">
-                  <select
-                    value={unit}
-                    onChange={(e) => setUnit(e.target.value)}
-                    className="flex-1 bg-white border border-gray-300 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all duration-200"
-                  >
-                    {units &&
-                      units.map((u) => (
-                        <option key={u.id} value={u.abbreviation}>
-                          {u.abbreviation}
-                        </option>
-                      ))}
-                  </select>
-                  <button
-                    type="submit"
-                    className="bg-yellow-400 hover:bg-yellow-500 text-black font-medium px-8 py-3 rounded-xl transition-all duration-200 flex items-center gap-2 shadow-sm hover:shadow-md"
-                  >
-                    <Plus size={18} />
-                    Add
-                  </button>
-                </div>
+                <span className="font-medium">Formula:</span>
+                <p className="text-xs mt-1">Min Threshold = (Daily Usage × Lead Time) + Buffer</p>
               </div>
-            </form>
-          </div>
-*/}
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
-            {/* Current Inventory */}
-            <div className="flex flex-col">
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 flex flex-col h-full">
-                <div className="p-6 border-b border-gray-200 flex-shrink-0">
-                  <div className="flex items-center justify-between gap-4 mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-blue-100 rounded-lg border border-blue-200">
-                        <Package className="text-blue-600" size={24} />
-                      </div>
-                      <div>
-                        <h2 className="text-xl font-semibold text-gray-900">Current Inventory</h2>
-                        {materials?.length > 0 && (
-                          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 border border-blue-200 mt-1">
-                            {materials.length} items
-                          </span>
-                        )}
-                      </div>
-                    </div>
+            </div>
+          </div>*/}
+
+          {/* Current Inventory */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 mb-8">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between gap-4 mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-100 rounded-lg border border-blue-200">
+                    <Package className="text-blue-600" size={24} />
                   </div>
-
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="text"
-                      value={inventoryQuery}
-                      onChange={(e) => setInventoryQuery(e.target.value)}
-                      placeholder="Search materials..."
-                      className="flex-1 bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                    />
-                    <select
-                      value={inventorySort}
-                      onChange={(e) => setInventorySort(e.target.value)}
-                      className="bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                    >
-                      <option value="alpha_asc">A - Z</option>
-                      <option value="alpha_desc">Z - A</option>
-                      <option value="time_desc">Newest</option>
-                      <option value="time_asc">Oldest</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="flex-1 overflow-hidden">
-                  <div className="h-full overflow-y-auto max-h-96">
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full">
-                        <thead className="bg-gray-50 sticky top-0 z-10">
-                          <tr>
-                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Material</th>
-                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Qty</th>
-                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Unit</th>
-                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200">
-                          {filteredMaterials &&
-                            filteredMaterials.map((mat) => (
-                              <tr key={mat.id} className="hover:bg-gray-50 transition-all duration-200">
-                                <td className="px-6 py-4">
-                                  {editingMaterial === mat.id ? (
-                                    <input
-                                      type="text"
-                                      value={editForm.name}
-                                      onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
-                                      className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                    />
-                                  ) : (
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                      <span className="font-medium text-gray-900">{mat.name}</span>
-                                    </div>
-                                  )}
-                                </td>
-                                <td className="px-6 py-4">
-                                  {editingMaterial === mat.id ? (
-                                    <input
-                                      type="number"
-                                      value={editForm.quantity}
-                                      onChange={(e) => setEditForm((prev) => ({ ...prev, quantity: e.target.value }))}
-                                      className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                      step="0.001"
-                                      min="0"
-                                    />
-                                  ) : (
-                                    <span className="text-gray-700 font-mono">
-                                      {mat.quantity ?? mat.stock?.quantity ?? 0}
-                                    </span>
-                                  )}
-                                </td>
-                                <td className="px-6 py-4">
-                                  {editingMaterial === mat.id ? (
-                                    <select
-                                      value={editForm.unit}
-                                      onChange={(e) => setEditForm((prev) => ({ ...prev, unit: e.target.value }))}
-                                      className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                    >
-                                      {units &&
-                                        units.map((u) => (
-                                          <option key={u.id} value={u.abbreviation}>
-                                            {u.abbreviation}
-                                          </option>
-                                        ))}
-                                    </select>
-                                  ) : (
-                                    <span className="text-gray-500 font-mono text-xs bg-gray-100 px-3 py-1 rounded-full border border-gray-200">
-                                      {mat.unit}
-                                    </span>
-                                  )}
-                                </td>
-                                <td className="px-6 py-4">
-                                  {editingMaterial === mat.id ? (
-                                    <div className="flex gap-2">
-                                      <button
-                                        onClick={() => handleUpdateMaterial(mat.id)}
-                                        className="bg-green-50 hover:bg-green-100 text-green-700 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-1 border border-green-200"
-                                      >
-                                        <Save size={12} />
-                                        Save
-                                      </button>
-                                      <button
-                                        onClick={handleCancelEdit}
-                                        className="bg-gray-50 hover:bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-1 border border-gray-200"
-                                      >
-                                        <X size={12} />
-                                        Cancel
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <div className="flex gap-2">
-                                      <button
-                                        onClick={() => handleEditMaterial(mat)}
-                                        className="bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-1 border border-blue-200"
-                                      >
-                                        <Edit3 size={12} />
-                                        Edit
-                                      </button>
-                                      <button
-                                        onClick={() => handleDeleteMaterial(mat.id)}
-                                        className="bg-red-50 hover:bg-red-100 text-red-700 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-1 border border-red-200"
-                                      >
-                                        <Trash2 size={12} />
-                                        Delete
-                                      </button>
-                                    </div>
-                                  )}
-                                </td>
-                              </tr>
-                            ))}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {materials.length === 0 && !error && (
-                      <div className="text-center py-12 text-gray-500">
-                        <div className="p-4 bg-gray-100 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center border border-gray-200">
-                          <Package size={32} className="text-gray-400" />
-                        </div>
-                        <p className="font-medium mb-2 text-gray-700">No materials found</p>
-                        <p className="text-sm">Add your first raw material to get started</p>
-                      </div>
+                  <div>
+                    <h2 className="text-xl font-semibold text-gray-900">Current Inventory</h2>
+                    {materials?.length > 0 && (
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 border border-blue-200 mt-1">
+                        {materials.length} items
+                      </span>
                     )}
                   </div>
                 </div>
+
+                <div className="flex items-center gap-3">
+                  <input
+                    type="text"
+                    value={inventoryQuery}
+                    onChange={(e) => setInventoryQuery(e.target.value)}
+                    placeholder="Search materials..."
+                    className="bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <select
+                    value={inventorySort}
+                    onChange={(e) => setInventorySort(e.target.value)}
+                    className="bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="alpha_asc">A - Z</option>
+                    <option value="alpha_desc">Z - A</option>
+                    <option value="time_desc">Newest</option>
+                    <option value="time_asc">Oldest</option>
+                  </select>
+                  <button
+                    onClick={handleRefreshInventory}
+                    disabled={refreshing}
+                    className="bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium px-4 py-2 rounded-lg transition-all duration-200 flex items-center gap-2 shadow-sm hover:shadow-md border border-blue-200 disabled:opacity-50"
+                  >
+                    <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+                    {refreshing ? 'Refreshing...' : 'Refresh'}
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Purchase Orders */}
-            <div className="flex flex-col">
-              <PurchaseOrderList purchaseOrders={purchaseOrders} onPurchaseOrdersChange={handlePurchaseOrdersChange} />
+            <div className="overflow-x-auto">
+              <table className="min-w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Material</th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Type</th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Quantity</th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Unit</th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Shelf Life</th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Status</th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {filteredMaterials.map((mat) => (
+                    <tr key={mat.id} className="hover:bg-gray-50 transition-all duration-200">
+                      <td className="px-6 py-4">
+                        {editingMaterial === mat.id ? (
+                          <input
+                            type="text"
+                            value={editForm.name}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
+                            className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                          />
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                            <span className="font-medium text-gray-900">{mat.name}</span>
+                          </div>
+                        )}
+                      </td>
+                      
+                      <td className="px-6 py-4">
+                        {editingMaterial === mat.id ? (
+                          <select
+                            value={editForm.material_type}
+                            onChange={(e) => {
+                              const newType = e.target.value
+                              setEditForm((prev) => {
+                                if (newType === 'supplies') {
+                                  return { ...prev, material_type: newType, shelf_life_days: '' }
+                                } else if (prev.material_type === 'supplies') {
+                                  const defaultShelfLife = newType === 'raw' ? '7' : newType === 'processed' ? '180' : '14'
+                                  return { ...prev, material_type: newType, shelf_life_days: defaultShelfLife }
+                                }
+                                return { ...prev, material_type: newType }
+                              })
+                            }}
+                            className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                          >
+                            <option value="raw">Raw Material</option>
+                            <option value="processed">Processed Good</option>
+                            <option value="semi_processed">Semi-Processed</option>
+                            <option value="supplies">Supplies & Utensils</option>
+                          </select>
+                        ) : (
+                          <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                            mat.material_type === 'raw' ? 'bg-green-100 text-green-800' :
+                            mat.material_type === 'processed' ? 'bg-blue-100 text-blue-800' :
+                            mat.material_type === 'supplies' ? 'bg-gray-100 text-gray-800' :
+                            'bg-purple-100 text-purple-800'
+                          }`}>
+                            {mat.material_type_display || 'Raw Material'}
+                          </span>
+                        )}
+                      </td>
+                      
+                      <td className="px-6 py-4">
+                        {editingMaterial === mat.id ? (
+                          <input
+                            type="number"
+                            value={editForm.quantity}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, quantity: e.target.value }))}
+                            className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                            step="0.001"
+                            min="0"
+                          />
+                        ) : (
+                          <span className="text-gray-700 font-mono">{mat.quantity}</span>
+                        )}
+                      </td>
+                      
+                      <td className="px-6 py-4">
+                        {editingMaterial === mat.id ? (
+                          <select
+                            value={editForm.unit}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, unit: e.target.value }))}
+                            className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                          >
+                            {units.map((u) => (
+                              <option key={u.id} value={u.abbreviation}>{u.abbreviation}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="text-gray-500 font-mono text-xs bg-gray-100 px-3 py-1 rounded-full">{mat.unit}</span>
+                        )}
+                      </td>
+                      
+                      <td className="px-6 py-4">
+                        {editingMaterial === mat.id ? (
+                          mat.material_type === 'supplies' || editForm.material_type === 'supplies' ? (
+                            <div className="w-full border border-gray-200 bg-gray-50 rounded-md px-3 py-2 text-sm text-gray-500 italic">
+                              N/A (Non-perishable)
+                            </div>
+                          ) : (
+                            <input
+                              type="number"
+                              value={editForm.shelf_life_days}
+                              onChange={(e) => setEditForm((prev) => ({ ...prev, shelf_life_days: e.target.value }))}
+                              className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                              min="1"
+                            />
+                          )
+                        ) : (
+                          <span className="text-sm text-gray-700">
+                            {mat.material_type === 'supplies' ? 'N/A (Non-perishable)' : `${mat.shelf_life_days || 7} days`}
+                          </span>
+                        )}
+                      </td>
+                      
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col gap-1">
+                          {mat.is_low_stock && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800 w-fit">
+                              Low Stock
+                            </span>
+                          )}
+                          {mat.quantity <= 0 && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 w-fit">
+                              Out of Stock
+                            </span>
+                          )}
+                          {!mat.is_low_stock && mat.quantity > 0 && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 w-fit">
+                              In Stock
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      
+                      <td className="px-6 py-4">
+                        {editingMaterial === mat.id ? (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleUpdateMaterial(mat.id)}
+                              disabled={saving}
+                              className="bg-green-50 hover:bg-green-100 text-green-700 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-1 border border-green-200 disabled:opacity-50"
+                            >
+                              <Save size={12} />
+                              {saving ? 'Saving...' : 'Save'}
+                            </button>
+                            <button
+                              onClick={handleCancelEdit}
+                              disabled={saving}
+                              className="bg-gray-50 hover:bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-1 border border-gray-200 disabled:opacity-50"
+                            >
+                              <X size={12} />
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleEditMaterial(mat)}
+                              className="bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-1 border border-blue-200"
+                            >
+                              <Edit3 size={12} />
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeleteMaterial(mat.id)}
+                              className="bg-red-50 hover:bg-red-100 text-red-700 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-1 border border-red-200"
+                            >
+                              <Trash2 size={12} />
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
 
-            {/* Stock History */}
-            <div className="flex flex-col">
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 flex flex-col h-full">
-                <div className="p-6 border-b border-gray-200 flex-shrink-0">
-                  <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-3">
-                    <div className="p-2 bg-purple-100 rounded-lg border border-purple-200">
-                      <History className="text-purple-600" size={24} />
-                    </div>
-                    Stock History
-                  </h2>
+            {materials.length === 0 && !error && (
+              <div className="text-center py-12 text-gray-500">
+                <div className="p-4 bg-gray-100 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                  <Package size={32} className="text-gray-400" />
                 </div>
-
-                <div className="flex-1 overflow-hidden">
-                  <div className="h-full overflow-y-auto p-6">
-                    <StockHistory />
-                  </div>
-                </div>
+                <p className="font-medium mb-2 text-gray-700">No materials found</p>
+                <p className="text-sm">Add your first raw material to get started</p>
               </div>
+            )}
+          </div>
+
+          {/* Purchase Orders */}
+          <div className="mb-8">
+            <PurchaseOrderList purchaseOrders={purchaseOrders} onPurchaseOrdersChange={handlePurchaseOrdersChange} />
+          </div>
+
+          {/* Stock History */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-3">
+                <div className="p-2 bg-purple-100 rounded-lg border border-purple-200">
+                  <History className="text-purple-600" size={24} />
+                </div>
+                Stock History
+              </h2>
+            </div>
+            <div className="p-6">
+              <StockHistory />
             </div>
           </div>
 

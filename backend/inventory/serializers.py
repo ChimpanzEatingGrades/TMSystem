@@ -2,7 +2,22 @@
 from django.db import transaction
 from rest_framework import serializers
 from decimal import Decimal
-from .models import RawMaterial, Recipe, RecipeItem, MenuCategory, MenuItem, UnitOfMeasurement, PurchaseOrder, PurchaseOrderItem, StockTransaction, CustomerOrder, OrderItem
+from django.utils import timezone
+from .models import (
+    RawMaterial, 
+    Recipe, 
+    RecipeItem, 
+    MenuCategory, 
+    MenuItem, 
+    UnitOfMeasurement, 
+    PurchaseOrder, 
+    PurchaseOrderItem, 
+    StockTransaction, 
+    CustomerOrder, 
+    OrderItem,
+    StockAlert,
+    StockBatch
+)
 
 class UnitOfMeasurementSerializer(serializers.ModelSerializer):
     class Meta:
@@ -11,9 +26,35 @@ class UnitOfMeasurementSerializer(serializers.ModelSerializer):
 
 # RawMaterial (read/write)
 class RawMaterialSerializer(serializers.ModelSerializer):
+    is_low_stock = serializers.BooleanField(read_only=True)
+    needs_reorder = serializers.BooleanField(read_only=True)
+    expired_batches_count = serializers.SerializerMethodField()
+    expiring_soon_count = serializers.SerializerMethodField()
+    oldest_batch_expiry = serializers.SerializerMethodField()
+    material_type_display = serializers.CharField(source='get_material_type_display', read_only=True)
+    is_raw_material = serializers.BooleanField(read_only=True)
+    is_processed = serializers.BooleanField(read_only=True)
+    is_supplies = serializers.BooleanField(read_only=True)
+    
     class Meta:
         model = RawMaterial
-        fields = ["id", "name", "unit", "quantity", "created_at"]
+        fields = [
+            "id", "name", "unit", "material_type", "material_type_display", 
+            "quantity", "created_at", "updated_at",
+            "minimum_threshold", "reorder_level", "shelf_life_days",
+            "is_low_stock", "needs_reorder", "is_raw_material", "is_processed", "is_supplies",
+            "expired_batches_count", "expiring_soon_count", "oldest_batch_expiry"
+        ]
+    
+    def get_expired_batches_count(self, obj):
+        return obj.get_expired_batches().count()
+    
+    def get_expiring_soon_count(self, obj):
+        return obj.get_expiring_soon_batches().count()
+    
+    def get_oldest_batch_expiry(self, obj):
+        oldest = obj.batches.filter(quantity__gt=0).order_by('expiry_date').first()
+        return oldest.expiry_date if oldest else None
 
     def validate_name(self, value: str):
         # Enforce case-insensitive uniqueness for name
@@ -24,7 +65,37 @@ class RawMaterialSerializer(serializers.ModelSerializer):
         if qs.exists():
             raise serializers.ValidationError("Raw material with this name already exists (case-insensitive).")
         return name
-
+    
+    def validate_shelf_life_days(self, value):
+        """Validate shelf life - allow None for supplies"""
+        # If it's None, that's okay (for supplies)
+        if value is None:
+            return value
+        
+        # If provided, must be positive
+        if value <= 0:
+            raise serializers.ValidationError("Shelf life must be at least 1 day")
+        return value
+    
+    def validate(self, data):
+        """Cross-field validation"""
+        material_type = data.get('material_type') or (self.instance.material_type if self.instance else 'raw')
+        shelf_life = data.get('shelf_life_days')
+        
+        # Supplies should not have shelf life
+        if material_type == 'supplies' and shelf_life is not None:
+            data['shelf_life_days'] = None
+        
+        # Other types should have shelf life (set defaults if missing)
+        elif material_type != 'supplies' and shelf_life is None:
+            if material_type == 'raw':
+                data['shelf_life_days'] = 7
+            elif material_type == 'processed':
+                data['shelf_life_days'] = 180
+            elif material_type == 'semi_processed':
+                data['shelf_life_days'] = 14
+        
+        return data
 
 # RecipeItem serializer: readable nested raw_material, but writes accept raw_material_id
 class RecipeItemSerializer(serializers.ModelSerializer):
@@ -127,6 +198,9 @@ class PurchaseOrderItemSerializer(serializers.ModelSerializer):
     # These are computed/server-supplied
     purchase_order = serializers.PrimaryKeyRelatedField(read_only=True)
     total_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    expiry_date = serializers.DateField(required=False, allow_null=True)
+    shelf_life_days = serializers.IntegerField(required=False, allow_null=True)  # Allow null
+    material_type = serializers.CharField(required=False, default='raw')
     
     class Meta:
         model = PurchaseOrderItem
@@ -135,6 +209,24 @@ class PurchaseOrderItemSerializer(serializers.ModelSerializer):
     def to_internal_value(self, data):
         """Allow unit to be provided as id or abbreviation; coerce numbers as needed."""
         mutable = dict(data)
+        
+        # Handle expiry_date - convert empty string to None
+        if 'expiry_date' in mutable and (mutable['expiry_date'] == '' or mutable['expiry_date'] == 'null'):
+            mutable['expiry_date'] = None
+        
+        # Handle shelf_life_days - allow None for supplies
+        material_type = mutable.get('material_type', 'raw')
+        if material_type == 'supplies':
+            mutable['shelf_life_days'] = None
+        elif 'shelf_life_days' not in mutable or not mutable['shelf_life_days']:
+            # Set defaults based on type
+            if material_type == 'raw':
+                mutable['shelf_life_days'] = 7
+            elif material_type == 'processed':
+                mutable['shelf_life_days'] = 180
+            elif material_type == 'semi_processed':
+                mutable['shelf_life_days'] = 14
+        
         # Coerce unit if provided as abbreviation
         unit_value = mutable.get('unit')
         if isinstance(unit_value, str):
@@ -152,6 +244,14 @@ class PurchaseOrderItemSerializer(serializers.ModelSerializer):
                     })
         # total_price is computed in model save; no need to pass it from client
         return super().to_internal_value(mutable)
+    
+    def validate_shelf_life_days(self, value):
+        """Validate shelf life is positive or None"""
+        if value is None:
+            return None  # Allowed for supplies
+        if value <= 0:
+            raise serializers.ValidationError("Shelf life must be at least 1 day")
+        return value
 
 class PurchaseOrderSerializer(serializers.ModelSerializer):
     items = PurchaseOrderItemSerializer(many=True, read_only=True)
@@ -209,7 +309,16 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
     
     def update_inventory(self, purchase_order):
         """Automatically update inventory when a purchase order is created"""
+        from datetime import timedelta
+        from .models import StockBatch
+        
         for item in purchase_order.items.all():
+            print(f"Processing item: {item.name}, Quantity: {item.quantity}")
+            
+            # Get shelf_life_days and material_type from the item data if available
+            item_shelf_life = getattr(item, 'shelf_life_days', None)
+            item_material_type = getattr(item, 'material_type', None) or 'raw'
+            
             # Case-insensitive match on name, exact match on unit abbreviation
             material = RawMaterial.objects.filter(
                 name__iexact=item.name,
@@ -217,16 +326,41 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
             ).first()
 
             if not material:
-                # Create new material, preserve provided casing
+                # Create new material with the provided shelf life and type
                 material = RawMaterial.objects.create(
                     name=item.name.strip(),
                     unit=item.unit.abbreviation,
-                    quantity=0
+                    quantity=0,
+                    shelf_life_days=item_shelf_life,  # Can be None for supplies
+                    material_type=item_material_type
                 )
+                print(f"Created new material: {material.name} with shelf_life: {material.shelf_life_days} days, type: {material.material_type}")
+            
+            # Only create batches with expiry dates for perishable items
+            if item_shelf_life is not None:
+                batch_shelf_life = item_shelf_life
+                expiry_date = purchase_order.purchase_date + timedelta(days=batch_shelf_life)
+                
+                # Create a new stock batch for this purchase with custom shelf life
+                batch = StockBatch.objects.create(
+                    raw_material=material,
+                    purchase_order=purchase_order,
+                    quantity=item.quantity,
+                    purchase_date=purchase_order.purchase_date,
+                    expiry_date=expiry_date
+                )
+                print(f"Created batch: {batch.quantity} {material.unit} of {material.name}, expires on {expiry_date} ({batch_shelf_life} days shelf life)")
+                notes_text = f"Stock in from Purchase Order #{purchase_order.id} (Batch expires: {expiry_date}, {batch_shelf_life} day shelf life)"
+            else:
+                # For supplies, don't create batch (no expiry tracking)
+                print(f"Skipping batch creation for supply item: {material.name} (non-perishable)")
+                notes_text = f"Stock in from Purchase Order #{purchase_order.id} (Non-perishable supply item)"
             
             # Add the purchased quantity to existing inventory
             material.quantity += item.quantity
             material.save()
+            
+            print(f"Material after save - ID: {material.id}, Total Quantity: {material.quantity}")
             
             # Create stock transaction record
             StockTransaction.objects.create(
@@ -235,12 +369,11 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
                 quantity=item.quantity,
                 unit=item.unit.abbreviation,
                 reference_number=f"PO-{purchase_order.id}",
-                notes=f"Stock in from Purchase Order #{purchase_order.id}",
+                notes=notes_text,
                 performed_by_name=purchase_order.encoded_by_name
             )
             
             print(f"Updated inventory: {material.name} - Added {item.quantity} {item.unit.abbreviation}")
-
 
 class StockTransactionSerializer(serializers.ModelSerializer):
     raw_material_name = serializers.CharField(source='raw_material.name', read_only=True)
@@ -452,3 +585,29 @@ class OrderStatusUpdateSerializer(serializers.ModelSerializer):
                 )
         
         return value
+
+
+class StockBatchSerializer(serializers.ModelSerializer):
+    """Serializer for stock batches"""
+    raw_material_name = serializers.CharField(source='raw_material.name', read_only=True)
+    days_until_expiry = serializers.IntegerField(read_only=True)
+    is_expiring_soon = serializers.BooleanField(read_only=True)
+    
+    class Meta:
+        model = StockBatch
+        fields = '__all__'
+        read_only_fields = ['expiry_date', 'is_expired', 'created_at']
+
+
+class StockAlertSerializer(serializers.ModelSerializer):
+    """Serializer for stock alerts"""
+    raw_material_name = serializers.CharField(source='raw_material.name', read_only=True)
+    raw_material_unit = serializers.CharField(source='raw_material.unit', read_only=True)
+    alert_type_display = serializers.CharField(source='get_alert_type_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    acknowledged_by_username = serializers.CharField(source='acknowledged_by.username', read_only=True)
+    
+    class Meta:
+        model = StockAlert
+        fields = '__all__'
+        read_only_fields = ['created_at', 'acknowledged_at', 'resolved_at']

@@ -50,6 +50,7 @@ export default function Inventory() {
   const fetchMaterials = async () => {
     try {
       const res = await api.get("/inventory/rawmaterials/")
+      console.log("Fetched materials:", res.data) // Debug log to check data
       setMaterials(res.data)
     } catch (err) {
       console.error("Error fetching materials:", err)
@@ -190,7 +191,7 @@ export default function Inventory() {
       <div className="min-h-screen bg-gray-50">
         <Navbar />
 
-        <div className="max-w-7xl mx-auto px-4 py-8">
+        <div className="max-w-full mx-auto px-4 py-8">
           <div className="flex flex-col md:flex-row md:items-center justify-between mb-8">
             <div>
               <h1 className="text-3xl font-bold text-black mb-2 flex items-center gap-3">
@@ -303,6 +304,7 @@ export default function Inventory() {
             </form>
           </div>
 
+          {/* Current Inventory - Full Width */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-8">
             <div className="p-6 border-b border-gray-200">
               <h2 className="text-xl font-semibold text-black flex items-center gap-2">
@@ -318,98 +320,162 @@ export default function Inventory() {
                     <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Material Name</th>
                     <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Quantity</th>
                     <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Unit</th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Expiry Date</th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Status</th>
                     <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {materials &&
-                    materials.map((mat) => (
-                      <tr key={mat.id} className="hover:bg-gray-50 transition-colors duration-150">
-                        <td className="px-6 py-4">
-                          {editingMaterial === mat.id ? (
-                            <input
-                              type="text"
-                              value={editForm.name}
-                              onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#FFC601] focus:border-transparent"
-                            />
-                          ) : (
-                            <span className="font-medium text-gray-900">{mat.name}</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4">
-                          {editingMaterial === mat.id ? (
-                            <input
-                              type="number"
-                              value={editForm.quantity}
-                              onChange={(e) => setEditForm((prev) => ({ ...prev, quantity: e.target.value }))}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#FFC601] focus:border-transparent"
-                              step="0.001"
-                              min="0"
-                            />
-                          ) : (
-                            <span className="text-gray-900">{mat.quantity ?? mat.stock?.quantity ?? 0}</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4">
-                          {editingMaterial === mat.id ? (
-                            <select
-                              value={editForm.unit}
-                              onChange={(e) => setEditForm((prev) => ({ ...prev, unit: e.target.value }))}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#FFC601] focus:border-transparent"
-                            >
-                              {units &&
-                                units.map((u) => (
-                                  <option key={u.id} value={u.abbreviation}>
-                                    {u.abbreviation}
-                                  </option>
-                                ))}
-                            </select>
-                          ) : (
-                            <span className="text-gray-600 font-mono text-sm bg-gray-100 px-2 py-1 rounded">
-                              {mat.unit}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4">
-                          {editingMaterial === mat.id ? (
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => handleUpdateMaterial(mat.id)}
-                                className="bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center gap-1"
+                    materials.map((mat) => {
+                      // Calculate expiry status
+                      const getExpiryStatus = (expiryDate) => {
+                        if (!expiryDate) return null;
+                        const today = new Date();
+                        const expiry = new Date(expiryDate);
+                        const daysUntilExpiry = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
+                        
+                        if (daysUntilExpiry < 0) {
+                          return { status: 'expired', color: 'bg-red-100 text-red-800', text: 'Expired' };
+                        } else if (daysUntilExpiry <= 7) {
+                          return { status: 'expiring', color: 'bg-yellow-100 text-yellow-800', text: `${daysUntilExpiry}d left` };
+                        } else {
+                          return { status: 'good', color: 'bg-green-100 text-green-800', text: 'Good' };
+                        }
+                      };
+                      
+                      const expiryStatus = getExpiryStatus(mat.expiry_date);
+                      
+                      // Debug log for each material
+                      console.log(`Material ${mat.name}:`, {
+                        id: mat.id,
+                        expiry_date: mat.expiry_date,
+                        expiryStatus: expiryStatus
+                      });
+                      
+                      return (
+                        <tr key={mat.id} className="hover:bg-gray-50 transition-colors duration-150">
+                          <td className="px-6 py-4">
+                            {editingMaterial === mat.id ? (
+                              <input
+                                type="text"
+                                value={editForm.name}
+                                onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
+                                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#FFC601] focus:border-transparent"
+                              />
+                            ) : (
+                              <span className="font-medium text-gray-900">{mat.name}</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            {editingMaterial === mat.id ? (
+                              <input
+                                type="number"
+                                value={editForm.quantity}
+                                onChange={(e) => setEditForm((prev) => ({ ...prev, quantity: e.target.value }))}
+                                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#FFC601] focus:border-transparent"
+                                step="0.001"
+                                min="0"
+                              />
+                            ) : (
+                              <span className="text-gray-900">{mat.quantity ?? mat.stock?.quantity ?? 0}</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            {editingMaterial === mat.id ? (
+                              <select
+                                value={editForm.unit}
+                                onChange={(e) => setEditForm((prev) => ({ ...prev, unit: e.target.value }))}
+                                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#FFC601] focus:border-transparent"
                               >
-                                <Save size={14} />
-                                Save
-                              </button>
-                              <button
-                                onClick={handleCancelEdit}
-                                className="bg-gray-500 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center gap-1"
-                              >
-                                <X size={14} />
-                                Cancel
-                              </button>
+                                {units &&
+                                  units.map((u) => (
+                                    <option key={u.id} value={u.abbreviation}>
+                                      {u.abbreviation}
+                                    </option>
+                                  ))}
+                              </select>
+                            ) : (
+                              <span className="text-gray-600 font-mono text-sm bg-gray-100 px-2 py-1 rounded">
+                                {mat.unit}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            {mat.expiry_date ? (
+                              <div className="flex flex-col gap-1">
+                                <span className="text-sm text-gray-700">
+                                  {new Date(mat.expiry_date).toLocaleDateString()}
+                                </span>
+                                {expiryStatus && (
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${expiryStatus.color} w-fit`}>
+                                    {expiryStatus.text}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-gray-400 text-sm italic">No expiry date</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex flex-col gap-1">
+                              {mat.is_low_stock && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800 w-fit">
+                                  Low Stock
+                                </span>
+                              )}
+                              {mat.quantity <= 0 && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 w-fit">
+                                  Out of Stock
+                                </span>
+                              )}
+                              {!mat.is_low_stock && mat.quantity > 0 && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 w-fit">
+                                  In Stock
+                                </span>
+                              )}
                             </div>
-                          ) : (
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => handleEditMaterial(mat)}
-                                className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center gap-1"
-                              >
-                                <Edit3 size={14} />
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => handleDeleteMaterial(mat.id)}
-                                className="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center gap-1"
-                              >
-                                <Trash2 size={14} />
-                                Delete
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className="px-6 py-4">
+                            {editingMaterial === mat.id ? (
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleUpdateMaterial(mat.id)}
+                                  className="bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center gap-1"
+                                >
+                                  <Save size={14} />
+                                  Save
+                                </button>
+                                <button
+                                  onClick={handleCancelEdit}
+                                  className="bg-gray-500 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center gap-1"
+                                >
+                                  <X size={14} />
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleEditMaterial(mat)}
+                                  className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center gap-1"
+                                >
+                                  <Edit3 size={14} />
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteMaterial(mat.id)}
+                                  className="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center gap-1"
+                                >
+                                  <Trash2 size={14} />
+                                  Delete
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
             </div>
@@ -423,21 +489,21 @@ export default function Inventory() {
             )}
           </div>
 
-          {/* Stock History */}
+          {/* Stock History - Full Width */}
           {showStockHistory && (
             <div className="mb-8">
               <StockHistory />
             </div>
           )}
 
-          {/* Purchase Orders */}
+          {/* Purchase Orders - Full Width */}
           <PurchaseOrderList purchaseOrders={purchaseOrders} onPurchaseOrdersChange={handlePurchaseOrdersChange} />
 
           {/* Modals */}
           <PurchaseOrderModal
             isOpen={showPurchaseModal}
             onClose={() => setShowPurchaseModal(false)}
-            onSuccess={handlePurchaseSuccess} // returns new PO
+            onSuccess={handlePurchaseSuccess}
           />
 
           <StockOutModal

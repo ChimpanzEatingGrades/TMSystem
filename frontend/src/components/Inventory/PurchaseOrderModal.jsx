@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { X, Plus, Minus, ShoppingCart, Package, Calendar, FileText, AlertTriangle } from "lucide-react"
+import { X, Plus, Minus, ShoppingCart, Package, Calendar, FileText, AlertTriangle, Trash2 } from "lucide-react"
 import { getUnits, getRawMaterials } from "../../api/inventoryAPI" // ✅ proper imports
 import { ACCESS_TOKEN } from "../../constants"
 
@@ -9,7 +9,7 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSuccess }) => {
   const [purchaseDate, setPurchaseDate] = useState("")
   const [notes, setNotes] = useState("")
   const [items, setItems] = useState([
-    { name: "", quantity: "", unit: "", unitPrice: "", totalPrice: 0, isNewMaterial: false, selectedMaterial: "" },
+    { name: "", quantity: "", unit: "", unitPrice: "", totalPrice: 0, isNewMaterial: false, selectedMaterial: "", expiry_date: "" },
   ])
   const [units, setUnits] = useState([])
   const [rawMaterials, setRawMaterials] = useState([])
@@ -23,7 +23,7 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSuccess }) => {
       setPurchaseDate(new Date().toISOString().split("T")[0])
       setNotes("")
       setItems([
-        { name: "", quantity: "", unit: "", unitPrice: "", totalPrice: 0, isNewMaterial: false, selectedMaterial: "" },
+        { name: "", quantity: "", unit: "", unitPrice: "", totalPrice: 0, isNewMaterial: false, selectedMaterial: "", expiry_date: "" },
       ])
       setError("")
       fetchUnits()
@@ -60,7 +60,7 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSuccess }) => {
   const addItem = () =>
     setItems([
       ...items,
-      { name: "", quantity: "", unit: "", unitPrice: "", totalPrice: 0, isNewMaterial: false, selectedMaterial: "" },
+      { name: "", quantity: "", unit: "", unitPrice: "", totalPrice: 0, isNewMaterial: false, selectedMaterial: "", expiry_date: "" },
     ])
 
   const removeItem = (idx) => items.length > 1 && setItems(items.filter((_, i) => i !== idx))
@@ -127,6 +127,7 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSuccess }) => {
           unit: unitObj.id,
           unit_price: Number.parseFloat(i.unitPrice),
           total_price: Number.parseFloat(i.totalPrice),
+          expiry_date: i.expiry_date,
         }
       })
 
@@ -146,7 +147,7 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSuccess }) => {
       const data = await res.json()
 
       setItems([
-        { name: "", quantity: "", unit: "", unitPrice: "", totalPrice: 0, isNewMaterial: false, selectedMaterial: "" },
+        { name: "", quantity: "", unit: "", unitPrice: "", totalPrice: 0, isNewMaterial: false, selectedMaterial: "", expiry_date: "" },
       ])
       setNotes("")
       onClose()
@@ -256,7 +257,7 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSuccess }) => {
                       )}
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
                       {/* Material Selection */}
                       <div className="lg:col-span-2">
                         <label className="block text-sm font-medium text-gray-700 mb-1">Material</label>
@@ -311,7 +312,7 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSuccess }) => {
 
                       {/* Quantity */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
                         <input
                           type="number"
                           value={item.quantity}
@@ -325,7 +326,7 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSuccess }) => {
 
                       {/* Unit */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Unit *</label>
                         {item.isNewMaterial ? (
                           <select
                             value={item.unit}
@@ -352,7 +353,7 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSuccess }) => {
 
                       {/* Unit Price */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Unit Price</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Unit Price *</label>
                         <input
                           type="number"
                           value={item.unitPrice}
@@ -363,12 +364,38 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSuccess }) => {
                           required
                         />
                       </div>
+
+                      {/* Expiry Date - MAKE IT MORE VISIBLE */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Expiry Date
+                          <span className="text-xs text-gray-500 ml-1">(Optional)</span>
+                        </label>
+                        <input
+                          type="date"
+                          value={item.expiry_date || ''}
+                          onChange={(e) => updateItem(idx, 'expiry_date', e.target.value)}
+                          min={new Date().toISOString().split('T')[0]}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#FFC601] focus:border-transparent"
+                          placeholder="Select date"
+                        />
+                      </div>
                     </div>
 
-                    {/* Total Price Display */}
-                    <div className="mt-3 text-right">
-                      <span className="text-sm text-gray-600">Total: </span>
-                      <span className="font-semibold text-lg text-green-600">₱{item.totalPrice.toFixed(2)}</span>
+                    {/* Total Price Display with Expiry Info */}
+                    <div className="mt-3 flex justify-between items-center">
+                      <div>
+                        {item.expiry_date && (
+                          <span className="text-sm text-orange-600 flex items-center gap-1">
+                            <Calendar size={14} />
+                            Expires: {new Date(item.expiry_date).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <span className="text-sm text-gray-600">Total: </span>
+                        <span className="font-semibold text-lg text-green-600">₱{item.totalPrice.toFixed(2)}</span>
+                      </div>
                     </div>
                   </div>
                 ))}
