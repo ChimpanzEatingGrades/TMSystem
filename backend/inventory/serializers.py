@@ -405,11 +405,13 @@ class CustomerOrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     processed_by_username = serializers.CharField(source='processed_by.username', read_only=True)
+    branch_name = serializers.CharField(source='branch.name', read_only=True)
     
     class Meta:
         model = CustomerOrder
         fields = [
             'id', 'customer_name', 'customer_phone', 'customer_email', 'special_requests',
+            'branch', 'branch_name',
             'status', 'status_display', 'subtotal', 'tax_amount', 'total_amount',
             'order_date', 'updated_at', 'processed_by', 'processed_by_username', 
             'processed_by_name', 'notes', 'items'
@@ -424,7 +426,7 @@ class CustomerOrderCreateSerializer(serializers.ModelSerializer):
         model = CustomerOrder
         fields = [
             'customer_name', 'customer_phone', 'customer_email', 'special_requests',
-            'tax_amount', 'notes', 'items'
+            'branch', 'tax_amount', 'notes', 'items'
         ]
     
     def to_representation(self, instance):

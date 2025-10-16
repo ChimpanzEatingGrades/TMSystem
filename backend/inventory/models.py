@@ -358,6 +358,17 @@ class StockTransaction(models.Model):
         super().save(*args, **kwargs)
 
 
+class Branch(models.Model):
+    """Represents a restaurant branch/location."""
+    name = models.CharField(max_length=150, unique=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
 class CustomerOrder(models.Model):
     """Model for customer orders"""
     
@@ -374,6 +385,16 @@ class CustomerOrder(models.Model):
     customer_phone = models.CharField(max_length=20, blank=True, null=True)
     customer_email = models.EmailField(blank=True, null=True)
     special_requests = models.TextField(blank=True, null=True)
+    
+    # Add branch field
+    branch = models.ForeignKey(
+        Branch,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='orders',
+        help_text="Branch where this order was placed"
+    )
     
     status = models.CharField(
         max_length=20, 

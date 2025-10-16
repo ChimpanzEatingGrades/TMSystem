@@ -27,8 +27,14 @@ import {
   createCustomerOrder
 } from "../../api/orders";
 import { getMenuItems } from "../../api/menu";
+import api from "../../api";
 
-const OrderManagement = ({ externalShowCreateModal, externalSetShowCreateModal }) => {
+const OrderManagement = ({ 
+  externalShowCreateModal, 
+  externalSetShowCreateModal,
+  scannedCartOrder,
+  clearScannedCartOrder 
+}) => {
   const [orders, setOrders] = useState([]);
   const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(true);
@@ -36,11 +42,13 @@ const OrderManagement = ({ externalShowCreateModal, externalSetShowCreateModal }
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [menuItems, setMenuItems] = useState([]);
+  const [branches, setBranches] = useState([]);
   const [filters, setFilters] = useState({
     status: '',
     customer_name: '',
     date_from: '',
-    date_to: ''
+    date_to: '',
+    branch_id: ''
   });
 
   // Create order form state
@@ -48,6 +56,7 @@ const OrderManagement = ({ externalShowCreateModal, externalSetShowCreateModal }
     customer_name: '',
     special_requests: '',
     notes: '',
+    branch: '',
     items: []
   });
 
@@ -88,6 +97,7 @@ const OrderManagement = ({ externalShowCreateModal, externalSetShowCreateModal }
     fetchOrders();
     fetchStats();
     fetchMenuItems();
+    fetchBranches();
   }, [filters]);
 
   // Sync external modal state with internal state
@@ -97,11 +107,30 @@ const OrderManagement = ({ externalShowCreateModal, externalSetShowCreateModal }
     }
   }, [externalShowCreateModal]);
 
+  // Populate form with scanned cart data
+  useEffect(() => {
+    if (scannedCartOrder && showCreateModal) {
+      setNewOrder({
+        customer_name: scannedCartOrder.customer_name || '',
+        special_requests: scannedCartOrder.special_requests || '',
+        notes: 'Order from cart QR scan',
+        items: scannedCartOrder.items.map(item => ({
+          menu_item: item.menu_item.toString(),
+          quantity: item.quantity,
+          special_instructions: item.special_instructions || ''
+        }))
+      });
+    }
+  }, [scannedCartOrder, showCreateModal]);
+
   // Update external state when internal state changes
   const handleSetShowCreateModal = (value) => {
     setShowCreateModal(value);
     if (externalSetShowCreateModal) {
       externalSetShowCreateModal(value);
+    }
+    if (!value && clearScannedCartOrder) {
+      clearScannedCartOrder();
     }
   };
 
@@ -132,6 +161,15 @@ const OrderManagement = ({ externalShowCreateModal, externalSetShowCreateModal }
       setMenuItems(response.data.filter(item => item.is_active));
     } catch (error) {
       console.error('Error fetching menu items:', error);
+    }
+  };
+
+  const fetchBranches = async () => {
+    try {
+      const response = await api.get('/inventory/branches/');
+      setBranches(response.data);
+    } catch (error) {
+      console.error('Error fetching branches:', error);
     }
   };
 
@@ -410,7 +448,25 @@ const OrderManagement = ({ externalShowCreateModal, externalSetShowCreateModal }
             <h3 className="text-lg font-semibold text-gray-900">Filters</h3>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Branch
+              </label>
+              <select
+                value={filters.branch_id}
+                onChange={(e) => handleFilterChange('branch_id', e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+              >
+                <option value="">All Branches</option>
+                {branches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Status
@@ -503,6 +559,9 @@ const OrderManagement = ({ externalShowCreateModal, externalSetShowCreateModal }
                     Order #
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Branch
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Customer
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -532,6 +591,9 @@ const OrderManagement = ({ externalShowCreateModal, externalSetShowCreateModal }
                     <tr key={order.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         #{order.id}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {order.branch_name || 'N/A'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {order.customer_name}
@@ -600,6 +662,7 @@ const OrderManagement = ({ externalShowCreateModal, externalSetShowCreateModal }
           newOrder={newOrder}
           setNewOrder={setNewOrder}
           menuItems={menuItems}
+          branches={branches}
           onClose={() => {
             handleSetShowCreateModal(false);
             resetCreateForm();
@@ -631,7 +694,8 @@ const OrderManagement = ({ externalShowCreateModal, externalSetShowCreateModal }
 const CreateOrderModal = ({ 
   newOrder, 
   setNewOrder, 
-  menuItems, 
+  menuItems,
+  branches,
   onClose, 
   onSubmit,
   addOrderItem,
@@ -668,6 +732,24 @@ const CreateOrderModal = ({
                   className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-yellow-500"
                   placeholder="Enter customer name"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Branch
+                </label>
+                <select
+                  value={newOrder.branch}
+                  onChange={(e) => setNewOrder({ ...newOrder, branch: e.target.value })}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                >
+                  <option value="">Select branch...</option>
+                  {branches.map((branch) => (
+                    <option key={branch.id} value={branch.id}>
+                      {branch.name}
+                    </option>
+                  ))}
+                </select>
               </div>
               
               <div>
@@ -908,6 +990,13 @@ const OrderDetailsModal = ({ order, onClose, onStatusChange }) => {
                     <span className="text-gray-600">Customer:</span>
                     <span className="font-medium">{order.customer_name}</span>
                   </div>
+
+                  {order.branch_name && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Branch:</span>
+                      <span className="font-medium">{order.branch_name}</span>
+                    </div>
+                  )}
                   
                   {order.customer_phone && (
                     <div className="flex justify-between">

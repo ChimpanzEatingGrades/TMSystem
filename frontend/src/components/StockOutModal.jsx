@@ -10,6 +10,8 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [expiredBatches, setExpiredBatches] = useState([])
+  const [forceExpired, setForceExpired] = useState(false)
 
   useEffect(() => {
     if (isOpen) {
@@ -30,6 +32,7 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+    setExpiredBatches([])
     setLoading(true)
 
     try {
@@ -40,13 +43,15 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
       const res = await api.post('/inventory/stock-out/stock_out/', {
         raw_material_id: parseInt(selectedMaterial),
         quantity: parseFloat(quantity),
-        notes: notes.trim() || undefined
+        notes: notes.trim() || undefined,
+        force_expired: forceExpired
       })
 
       // Reset form
       setSelectedMaterial('')
       setQuantity('')
       setNotes('')
+      setForceExpired(false)
       
       // Close modal first
       onClose()
@@ -60,8 +65,28 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
         }
       }
     } catch (err) {
-      console.error('Error processing stock out:', err)
-      setError(err.response?.data?.error || err.message || 'Failed to process stock out')
+      console.error('Stock out error:', err)
+      
+      // Check if this is an insufficient stock error
+      if (err.response?.status === 400 && err.response?.data) {
+        const errorData = err.response.data
+        
+        // Handle insufficient stock with expired batches info
+        if (errorData.expired_batches) {
+          setExpiredBatches(errorData.expired_batches)
+          setError(
+            errorData.error + 
+            (errorData.expired_batches.length > 0 
+              ? `\n\n${errorData.suggestion || 'There are expired batches available for disposal.'}`
+              : ''
+            )
+          )
+        } else {
+          setError(errorData.error || 'Insufficient stock for this operation')
+        }
+      } else {
+        setError(err.response?.data?.error || err.message || 'Failed to process stock out')
+      }
     } finally {
       setLoading(false)
     }
@@ -73,7 +98,7 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
+      <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold">Stock Out</h2>
           <button 
@@ -87,7 +112,19 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
 
         {error && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-            {error}
+            <p className="whitespace-pre-line">{error}</p>
+            {expiredBatches.length > 0 && (
+              <div className="mt-2">
+                <p className="font-semibold text-sm">Expired Batches:</p>
+                <ul className="text-xs mt-1 space-y-1">
+                  {expiredBatches.map((batch, idx) => (
+                    <li key={idx}>
+                      Batch #{batch.batch_id}: {batch.quantity} units (expired {batch.expiry_date})
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
 
@@ -98,7 +135,11 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
             </label>
             <select
               value={selectedMaterial}
-              onChange={(e) => setSelectedMaterial(e.target.value)}
+              onChange={(e) => {
+                setSelectedMaterial(e.target.value)
+                setError('')
+                setExpiredBatches([])
+              }}
               className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
               disabled={loading}
@@ -106,7 +147,7 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
               <option value="">Choose a material...</option>
               {materials.map((material) => (
                 <option key={material.id} value={material.id}>
-                  {material.name} ({material.quantity} {material.unit})
+                  {material.name} ({material.quantity} {material.unit} available)
                 </option>
               ))}
             </select>
@@ -117,6 +158,16 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
               <p className="text-sm text-blue-800">
                 <strong>Available Stock:</strong> {selectedMaterialData.quantity} {selectedMaterialData.unit}
               </p>
+              {selectedMaterialData.expired_batches_count > 0 && (
+                <p className="text-sm text-orange-600 mt-1">
+                  ⚠️ {selectedMaterialData.expired_batches_count} expired batch(es) available
+                </p>
+              )}
+              {selectedMaterialData.expiring_soon_count > 0 && (
+                <p className="text-sm text-yellow-600 mt-1">
+                  ⏰ {selectedMaterialData.expiring_soon_count} batch(es) expiring soon
+                </p>
+              )}
             </div>
           )}
 
@@ -127,7 +178,10 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
             <input
               type="number"
               value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
+              onChange={(e) => {
+                setQuantity(e.target.value)
+                setError('')
+              }}
               className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               step="0.001"
               min="0.001"
@@ -136,8 +190,31 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
               disabled={loading}
               placeholder="Enter quantity to remove"
             />
+            {selectedMaterialData && parseFloat(quantity) > selectedMaterialData.quantity && (
+              <p className="text-sm text-red-600 mt-1">
+                Cannot exceed available stock ({selectedMaterialData.quantity} {selectedMaterialData.unit})
+              </p>
+            )}
           </div>
 
+          {expiredBatches.length > 0 && (
+            <div className="mb-4">
+              <label className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  checked={forceExpired}
+                  onChange={(e) => setForceExpired(e.target.checked)}
+                  className="rounded border-gray-300 text-red-600 focus:ring-red-500"
+                />
+                <span className="text-sm text-gray-700">
+                  Stock out expired batches for disposal
+                </span>
+              </label>
+              <p className="text-xs text-gray-500 mt-1 ml-6">
+                Enable this to remove expired inventory from stock
+              </p>
+            </div>
+          )}
 
           <div className="mb-6">
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -164,10 +241,10 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
-              disabled={loading || !selectedMaterial || !quantity}
+              className={`px-4 py-2 ${forceExpired ? 'bg-orange-600 hover:bg-orange-700' : 'bg-red-600 hover:bg-red-700'} text-white rounded disabled:opacity-50`}
+              disabled={loading || !selectedMaterial || !quantity || (selectedMaterialData && parseFloat(quantity) > selectedMaterialData.quantity)}
             >
-              {loading ? 'Processing...' : 'Stock Out'}
+              {loading ? 'Processing...' : forceExpired ? 'Stock Out Expired' : 'Stock Out'}
             </button>
           </div>
         </form>
