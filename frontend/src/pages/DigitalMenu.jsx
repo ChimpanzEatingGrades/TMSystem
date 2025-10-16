@@ -1,7 +1,15 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Search, Filter, ShoppingCart, Plus, Minus, MapPin, Utensils } from "lucide-react"
+import {
+  Search,
+  Filter,
+  ShoppingCart,
+  Plus,
+  Minus,
+  MapPin,
+  Utensils,
+} from "lucide-react"
 import { getMenuItems, getCategories, getBranches } from "../api/inventoryAPI"
 import Navbar from "../components/Navbar"
 
@@ -10,37 +18,45 @@ export default function CustomerMenuPage() {
   const [categories, setCategories] = useState([])
   const [branches, setBranches] = useState([])
   const [selectedCategory, setSelectedCategory] = useState("all")
-  const [selectedBranch, setSelectedBranch] = useState("") // must pick one
+  const [selectedBranch, setSelectedBranch] = useState("")
   const [searchTerm, setSearchTerm] = useState("")
   const [filteredItems, setFilteredItems] = useState([])
   const [quantities, setQuantities] = useState({})
 
-  // Load order from localStorage (includes branch)
+  // ✅ Load order from localStorage (includes branch)
   const [order, setOrder] = useState(() => {
     const stored = localStorage.getItem("customer_order")
     return stored
       ? JSON.parse(stored)
-      : {
-          name: "",
-          requests: "",
-          cart: [],
-          branch: "",
-        }
+      : { name: "", requests: "", cart: [], branch: "", branchName: "" }
   })
 
   const { cart } = order
 
-  // Persist to localStorage
+  // ✅ Persist order to localStorage whenever it changes
   useEffect(() => {
     localStorage.setItem("customer_order", JSON.stringify(order))
   }, [order])
 
-  // Initial data
+  // ✅ Load initial data (menu, categories, branches)
   useEffect(() => {
     loadData()
   }, [])
 
-  // Filtering when state changes
+  // ✅ Once branches are loaded, auto-select saved branch if it exists
+  useEffect(() => {
+    if (branches.length > 0 && order.branch && !selectedBranch) {
+      // Confirm that the saved branch still exists
+      const exists = branches.find(
+        (b) => String(b.id) === String(order.branch)
+      )
+      if (exists) {
+        setSelectedBranch(String(order.branch))
+      }
+    }
+  }, [branches, order.branch])
+
+  // ✅ Refilter whenever branch/category/search changes
   useEffect(() => {
     if (selectedBranch) filterItems()
   }, [menuItems, selectedCategory, selectedBranch, searchTerm])
@@ -72,7 +88,7 @@ export default function CustomerMenuPage() {
     }
   }
 
-  // Check if item is available for selected branch
+  // ✅ Branch-based availability
   const isAvailableForBranch = (item) => {
     const now = new Date()
     const currentTime = now.toTimeString().slice(0, 5)
@@ -96,6 +112,7 @@ export default function CustomerMenuPage() {
     return avail.is_active && inDate && inTime
   }
 
+  // ✅ Filtering logic
   const filterItems = () => {
     let filtered = [...menuItems]
 
@@ -128,6 +145,7 @@ export default function CustomerMenuPage() {
     }))
   }
 
+  // ✅ Add to cart (keep branch info)
   const addToCart = (item) => {
     const quantity = quantities[item.id] || 1
     setOrder((prev) => {
@@ -158,24 +176,39 @@ export default function CustomerMenuPage() {
           },
         ]
       }
-      return { ...prev, cart: updatedCart, branch: selectedBranch }
+
+      const branchName =
+        branches.find((b) => String(b.id) === String(selectedBranch))?.name || ""
+
+      return {
+        ...prev,
+        cart: updatedCart,
+        branch: selectedBranch,
+        branchName,
+      }
     })
   }
 
-  // Handle branch change (resets cart)
+  // ✅ Handle branch change (clears cart if needed)
   const handleBranchChange = (branchId) => {
     if (branchId !== order.branch && cart.length > 0) {
-      if (!window.confirm("Changing branch will clear your cart. Continue?")) return
+      if (!window.confirm("Changing branch will clear your cart. Continue?"))
+        return
     }
+
+    const branchName =
+      branches.find((b) => String(b.id) === String(branchId))?.name || ""
+
     setSelectedBranch(branchId)
     setOrder((prev) => ({
       ...prev,
       cart: [],
       branch: branchId,
+      branchName,
     }))
   }
 
-  // Empty state (before picking branch)
+  // ✅ Empty state before picking branch
   if (!selectedBranch) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -206,6 +239,7 @@ export default function CustomerMenuPage() {
     )
   }
 
+  // ✅ Regular menu view
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
@@ -218,25 +252,34 @@ export default function CustomerMenuPage() {
             <p className="text-gray-600">
               Showing items available at{" "}
               <span className="font-semibold text-yellow-600">
-                {branches.find((b) => String(b.id) === String(selectedBranch))?.name}
+                {branches.find(
+                  (b) => String(b.id) === String(selectedBranch)
+                )?.name || "Branch"}
               </span>
             </p>
           </div>
-          <button className="relative p-2 bg-yellow-400 rounded-full hover:bg-yellow-500">
+
+          <a
+            href="/shopping-cart"
+            className="relative p-2 bg-yellow-400 rounded-full hover:bg-yellow-500"
+          >
             <ShoppingCart className="text-black" size={24} />
             {cart.length > 0 && (
               <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs font-bold rounded-full px-1">
                 {cart.reduce((a, c) => a + c.quantity, 0)}
               </span>
             )}
-          </button>
+          </a>
         </div>
 
         {/* Filters */}
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Search */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              size={20}
+            />
             <input
               type="text"
               placeholder="Search menu..."
@@ -248,7 +291,10 @@ export default function CustomerMenuPage() {
 
           {/* Category Filter */}
           <div className="relative">
-            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+            <Filter
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              size={20}
+            />
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
@@ -265,7 +311,10 @@ export default function CustomerMenuPage() {
 
           {/* Branch Selector */}
           <div className="relative">
-            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+            <MapPin
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              size={20}
+            />
             <select
               value={selectedBranch}
               onChange={(e) => handleBranchChange(e.target.value)}
@@ -307,10 +356,13 @@ export default function CustomerMenuPage() {
                   />
                 )}
                 <h2 className="text-xl font-semibold mb-1">{item.name}</h2>
-                <p className="text-gray-600 text-sm flex-1">{item.description}</p>
-                <div className="mt-2 font-bold text-lg text-yellow-600">₱{item.price}</div>
+                <p className="text-gray-600 text-sm flex-1">
+                  {item.description}
+                </p>
+                <div className="mt-2 font-bold text-lg text-yellow-600">
+                  ₱{item.price}
+                </div>
 
-                {/* Quantity + Add */}
                 <div className="flex items-center gap-3 mt-4">
                   <div className="flex items-center gap-2">
                     <button
