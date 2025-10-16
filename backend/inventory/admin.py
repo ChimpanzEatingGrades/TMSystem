@@ -1,6 +1,6 @@
 # inventory/admin.py
 from django.contrib import admin
-from .models import RawMaterial, Recipe, RecipeItem, MenuCategory, MenuItem, CustomerOrder, OrderItem
+from .models import RawMaterial, Recipe, RecipeItem, MenuCategory, MenuItem, CustomerOrder, OrderItem, Branch
 
 @admin.register(RawMaterial)
 class RawMaterialAdmin(admin.ModelAdmin):
@@ -70,3 +70,9 @@ class OrderItemAdmin(admin.ModelAdmin):
     search_fields = ("order__customer_name", "menu_item__name")
     list_filter = ("order__status", "menu_item__category")
     readonly_fields = ('total_price',)
+
+
+@admin.register(Branch)
+class BranchAdmin(admin.ModelAdmin):
+    list_display = ("id", "name")
+    search_fields = ("name",)

@@ -18,6 +18,7 @@ from .models import (
     CustomerOrder,
     OrderItem,
     StockAlert,
+    Branch,
 )
 from .serializers import (
     RawMaterialSerializer,
@@ -34,6 +35,7 @@ from .serializers import (
     CustomerOrderCreateSerializer,
     OrderStatusUpdateSerializer,
     StockAlertSerializer,
+    BranchSerializer,
 )
 
 
@@ -976,3 +978,9 @@ class StockAlertViewSet(viewsets.ModelViewSet):
                 for batch in expiring_soon
             ]
         })
+
+
+class BranchViewSet(viewsets.ModelViewSet):
+    queryset = Branch.objects.all()
+    serializer_class = BranchSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]

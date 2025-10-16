@@ -16,7 +16,8 @@ from .models import (
     CustomerOrder, 
     OrderItem,
     StockAlert,
-    StockBatch
+    StockBatch,
+    Branch
 )
 
 class UnitOfMeasurementSerializer(serializers.ModelSerializer):
@@ -611,3 +612,8 @@ class StockAlertSerializer(serializers.ModelSerializer):
         model = StockAlert
         fields = '__all__'
         read_only_fields = ['created_at', 'acknowledged_at', 'resolved_at']
+
+class BranchSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Branch
+        fields = ["id", "name"]

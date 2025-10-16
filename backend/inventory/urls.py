@@ -10,7 +10,8 @@ from .views import (
     StockTransactionViewSet, 
     StockOutViewSet, 
     CustomerOrderViewSet,
-    StockAlertViewSet
+    StockAlertViewSet,
+    BranchViewSet
 )
 from django.conf import settings
 from django.conf.urls.static import static
@@ -26,6 +27,7 @@ router.register(r'stock-transactions', StockTransactionViewSet)
 router.register(r'stock-out', StockOutViewSet, basename='stock-out')
 router.register(r'customer-orders', CustomerOrderViewSet, basename='customer-order')
 router.register(r'stock-alerts', StockAlertViewSet, basename='stock-alert')
+router.register(r'branches', BranchViewSet, basename='branch')
 
 urlpatterns = [
     path("", include(router.urls)),
