@@ -6,10 +6,12 @@ import Navbar from "../components/Navbar"
 import { QRCodeCanvas } from "qrcode.react"
 
 function CheckoutModal({ order, subtotal, onClose }) {
+  // Create a simplified string format for better QR scanning
+  const qrString = `CART:${order.name}|${subtotal}|${order.cart.map(item => `${item.id}:${item.quantity}`).join(',')}|${order.requests || ''}`;
+
   return (
     <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center">
       <div className="bg-white rounded-xl p-6 max-w-md w-full relative">
-        {/* Close button */}
         <button
           onClick={onClose}
           className="absolute top-3 right-3 text-gray-500 hover:text-black"
@@ -21,21 +23,27 @@ function CheckoutModal({ order, subtotal, onClose }) {
           Present to Cashier
         </h2>
 
-        {/* QR Code */}
         <div className="flex justify-center mb-4">
           <QRCodeCanvas
-            value={JSON.stringify(order)}
-            size={200}
+            value={qrString}
+            size={256}
             bgColor="#ffffff"
             fgColor="#000000"
-            level="H"
+            level="M"
             includeMargin={true}
           />
         </div>
 
-        {/* Total */}
-        <div className="text-center text-lg font-semibold">
-          Total: ₱{subtotal.toFixed(2)}
+        <div className="text-center">
+          <div className="text-lg font-semibold mb-2">
+            Total: ₱{subtotal.toFixed(2)}
+          </div>
+          <p className="text-sm text-gray-600 mb-2">
+            Customer: {order.name || 'Walk-in'}
+          </p>
+          <p className="text-xs text-gray-500">
+            Show this QR code to the cashier
+          </p>
         </div>
       </div>
     </div>

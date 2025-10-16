@@ -1056,62 +1056,9 @@ class StockAlertViewSet(viewsets.ModelViewSet):
                 for batch in expiring_soon
             ]
         })
-<<<<<<< HEAD
-    
-    @action(detail=False, methods=['post'])
-    def check_expiring_soon(self, request):
-        """Check for batches expiring within 2 days"""
-        from .models import StockBatch
-        from django.utils import timezone
-        from datetime import timedelta
-        
-        today = timezone.now().date()
-        threshold = today + timedelta(days=2)
-        
-        expiring_soon = StockBatch.objects.filter(
-            expiry_date__lte=threshold,
-            expiry_date__gte=today,
-            quantity__gt=0
-        ).select_related('raw_material')
-        
-        alerts_created = 0
-        
-        for batch in expiring_soon:
-            material = batch.raw_material
-            
-            alert, created = StockAlert.objects.get_or_create(
-                raw_material=material,
-                alert_type='expiring_soon',
-                status='active',
-                defaults={
-                    'message': f'{material.name} batch expiring on {batch.expiry_date} ({batch.days_until_expiry} days). Quantity: {batch.quantity} {material.unit}. Use soon or plan stock-out.',
-                    'current_quantity': material.quantity,
-                }
-            )
-            
-            if created:
-                alerts_created += 1
-        
-        return Response({
-            'message': f'Checked batches expiring within 2 days',
-            'expiring_soon_count': expiring_soon.count(),
-            'alerts_created': alerts_created,
-            'expiring_batches': [
-                {
-                    'material': batch.raw_material.name,
-                    'quantity': float(batch.quantity),
-                    'unit': batch.raw_material.unit,
-                    'expiry_date': batch.expiry_date,
-                    'days_until_expiry': batch.days_until_expiry
-                }
-                for batch in expiring_soon
-            ]
-        })
-=======
 
 
 class BranchViewSet(viewsets.ModelViewSet):
     queryset = Branch.objects.all()
     serializer_class = BranchSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
->>>>>>> 87df2650c40a73d5111730c16f05b90addb7cc56

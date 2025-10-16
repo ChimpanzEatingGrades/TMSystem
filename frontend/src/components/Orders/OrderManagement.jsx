@@ -28,7 +28,12 @@ import {
 } from "../../api/orders";
 import { getMenuItems } from "../../api/menu";
 
-const OrderManagement = ({ externalShowCreateModal, externalSetShowCreateModal }) => {
+const OrderManagement = ({ 
+  externalShowCreateModal, 
+  externalSetShowCreateModal,
+  scannedCartOrder,
+  clearScannedCartOrder 
+}) => {
   const [orders, setOrders] = useState([]);
   const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(true);
@@ -97,11 +102,30 @@ const OrderManagement = ({ externalShowCreateModal, externalSetShowCreateModal }
     }
   }, [externalShowCreateModal]);
 
+  // Populate form with scanned cart data
+  useEffect(() => {
+    if (scannedCartOrder && showCreateModal) {
+      setNewOrder({
+        customer_name: scannedCartOrder.customer_name || '',
+        special_requests: scannedCartOrder.special_requests || '',
+        notes: 'Order from cart QR scan',
+        items: scannedCartOrder.items.map(item => ({
+          menu_item: item.menu_item.toString(),
+          quantity: item.quantity,
+          special_instructions: item.special_instructions || ''
+        }))
+      });
+    }
+  }, [scannedCartOrder, showCreateModal]);
+
   // Update external state when internal state changes
   const handleSetShowCreateModal = (value) => {
     setShowCreateModal(value);
     if (externalSetShowCreateModal) {
       externalSetShowCreateModal(value);
+    }
+    if (!value && clearScannedCartOrder) {
+      clearScannedCartOrder();
     }
   };
 
