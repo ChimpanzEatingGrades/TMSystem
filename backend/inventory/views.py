@@ -18,6 +18,7 @@ from .models import (
     CustomerOrder,
     OrderItem,
     StockAlert,
+    Branch,
 )
 from .serializers import (
     RawMaterialSerializer,
@@ -34,6 +35,7 @@ from .serializers import (
     CustomerOrderCreateSerializer,
     OrderStatusUpdateSerializer,
     StockAlertSerializer,
+    BranchSerializer,
 )
 
 
@@ -1054,6 +1056,7 @@ class StockAlertViewSet(viewsets.ModelViewSet):
                 for batch in expiring_soon
             ]
         })
+<<<<<<< HEAD
     
     @action(detail=False, methods=['post'])
     def check_expiring_soon(self, request):
@@ -1104,3 +1107,11 @@ class StockAlertViewSet(viewsets.ModelViewSet):
                 for batch in expiring_soon
             ]
         })
+=======
+
+
+class BranchViewSet(viewsets.ModelViewSet):
+    queryset = Branch.objects.all()
+    serializer_class = BranchSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+>>>>>>> 87df2650c40a73d5111730c16f05b90addb7cc56

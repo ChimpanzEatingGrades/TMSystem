@@ -1,11 +1,165 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Plus, Search, Filter, Grid, List } from "lucide-react"
-import { getMenuItems, getCategories, deleteMenuItem } from "../../api/inventoryAPI"
+import { Plus, Search, Filter, Grid, List, MapPin } from "lucide-react"
+import {
+  getMenuItems,
+  getCategories,
+  deleteMenuItem,
+  getBranches,
+  createBranch,
+  updateBranch,
+  deleteBranch,
+} from "../../api/inventoryAPI"
 import MenuItemModal from "./MenuItemModal"
 import MenuItemCard from "./MenuItemCard"
 import Navbar from "../Navbar"
+
+function BranchesModal({ open, onClose }) {
+  const [branches, setBranches] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [newBranch, setNewBranch] = useState("")
+  const [editingBranchId, setEditingBranchId] = useState(null)
+  const [editingBranchName, setEditingBranchName] = useState("")
+  const [error, setError] = useState("")
+
+  useEffect(() => {
+    if (open) loadBranches()
+    // eslint-disable-next-line
+  }, [open])
+
+  const loadBranches = async () => {
+    setLoading(true)
+    try {
+      const res = await getBranches()
+      setBranches(res.data?.results || res.data || [])
+    } catch (err) {
+      setError("Failed to load branches")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleAdd = async () => {
+    if (!newBranch.trim()) return
+    try {
+      await createBranch({ name: newBranch })
+      setNewBranch("")
+      loadBranches()
+    } catch (err) {
+      setError("Failed to create branch")
+    }
+  }
+
+  const handleEdit = (branch) => {
+    setEditingBranchId(branch.id)
+    setEditingBranchName(branch.name)
+  }
+
+  const handleUpdate = async (id) => {
+    if (!editingBranchName.trim()) return
+    try {
+      await updateBranch(id, { name: editingBranchName })
+      setEditingBranchId(null)
+      setEditingBranchName("")
+      loadBranches()
+    } catch (err) {
+      setError("Failed to update branch")
+    }
+  }
+
+  const handleDelete = async (id) => {
+    if (!window.confirm("Delete this branch?")) return
+    try {
+      await deleteBranch(id)
+      loadBranches()
+    } catch (err) {
+      setError("Failed to delete branch")
+    }
+  }
+
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg w-full max-w-md p-6 shadow-lg">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-bold flex items-center gap-2">
+            <MapPin size={20} /> Branches
+          </h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-black text-2xl font-bold">&times;</button>
+        </div>
+        {error && <div className="text-red-600 mb-2">{error}</div>}
+        <div className="mb-4">
+          <input
+            type="text"
+            value={newBranch}
+            onChange={(e) => setNewBranch(e.target.value)}
+            placeholder="New branch name"
+            className="border rounded px-3 py-2 w-2/3 mr-2"
+          />
+          <button
+            onClick={handleAdd}
+            className="bg-[#FFC601] hover:bg-yellow-500 text-black font-semibold px-4 py-2 rounded"
+          >
+            <Plus size={16} className="inline" /> Add
+          </button>
+        </div>
+        <ul className="divide-y">
+          {loading ? (
+            <li className="py-4 text-center text-gray-500">Loading...</li>
+          ) : branches.length === 0 ? (
+            <li className="py-4 text-center text-gray-400">No branches yet</li>
+          ) : (
+            branches.map((branch) => (
+              <li key={branch.id} className="flex items-center justify-between py-2">
+                {editingBranchId === branch.id ? (
+                  <>
+                    <input
+                      value={editingBranchName}
+                      onChange={(e) => setEditingBranchName(e.target.value)}
+                      className="border rounded px-2 py-1 flex-1 mr-2"
+                    />
+                    <button
+                      onClick={() => handleUpdate(branch.id)}
+                      className="bg-green-500 text-white px-2 py-1 rounded mr-1"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => setEditingBranchId(null)}
+                      className="bg-gray-300 text-black px-2 py-1 rounded"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span>{branch.name}</span>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => handleEdit(branch)}
+                        className="text-blue-600 hover:underline px-2"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDelete(branch.id)}
+                        className="text-red-600 hover:underline px-2"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </>
+                )}
+              </li>
+            ))
+          )}
+        </ul>
+      </div>
+    </div>
+  )
+}
 
 export default function MenuItemsPage() {
   const [menuItems, setMenuItems] = useState([])
@@ -18,6 +172,7 @@ export default function MenuItemsPage() {
   const [editingItem, setEditingItem] = useState(null)
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState("all")
+  const [showBranchesModal, setShowBranchesModal] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -144,16 +299,24 @@ export default function MenuItemsPage() {
             <h1 className="text-3xl font-bold text-black mb-2">Menu Items</h1>
             <p className="text-gray-600">Manage your restaurant menu items and categories</p>
           </div>
-          <button
-            onClick={() => {
-              setEditingItem(null)
-              setShowModal(true)
-            }}
-            className="bg-[#FFC601] hover:bg-yellow-500 text-black font-semibold px-6 py-3 rounded-lg transition-colors duration-200 flex items-center gap-2 shadow-lg mt-4 md:mt-0"
-          >
-            <Plus size={20} />
-            Add Menu Item
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowBranchesModal(true)}
+              className="bg-white border border-gray-300 hover:bg-gray-100 text-black font-semibold px-4 py-2 rounded-lg flex items-center gap-2 shadow"
+            >
+              <MapPin size={18} /> Branches
+            </button>
+            <button
+              onClick={() => {
+                setEditingItem(null)
+                setShowModal(true)
+              }}
+              className="bg-[#FFC601] hover:bg-yellow-500 text-black font-semibold px-6 py-3 rounded-lg transition-colors duration-200 flex items-center gap-2 shadow-lg"
+            >
+              <Plus size={20} />
+              Add Menu Item
+            </button>
+          </div>
         </div>
 
         {/* Filters and Search */}
@@ -291,8 +454,9 @@ export default function MenuItemsPage() {
         )}
       </div>
 
-      {/* Modal */}
+      {/* Modals */}
       {showModal && <MenuItemModal onClose={() => setShowModal(false)} onSave={handleSave} editingItem={editingItem} />}
+      {showBranchesModal && <BranchesModal open={showBranchesModal} onClose={() => setShowBranchesModal(false)} />}
     </div>
   )
 }

@@ -30,4 +30,10 @@ export const createRawMaterial = (data) => api.post("/inventory/rawmaterials/", 
 export const updateRawMaterial = (id, data) => api.put(`/inventory/rawmaterials/${id}/`, data);
 export const deleteRawMaterial = (id) => api.delete(`/inventory/rawmaterials/${id}/`);
 
+// Branches
+export const getBranches = () => api.get("/inventory/branches/");
+export const createBranch = (data) => api.post("/inventory/branches/", data);
+export const updateBranch = (id, data) => api.put(`/inventory/branches/${id}/`, data);
+export const deleteBranch = (id) => api.delete(`/inventory/branches/${id}/`);
+
 export default api;
