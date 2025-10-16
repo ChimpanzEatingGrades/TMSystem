@@ -1,13 +1,15 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Trash2, Plus, Minus, ArrowLeft, X } from "lucide-react"
+import { Trash2, Plus, Minus, ArrowLeft, X, MapPin } from "lucide-react"
 import Navbar from "../components/Navbar"
 import { QRCodeCanvas } from "qrcode.react"
 
 function CheckoutModal({ order, subtotal, onClose }) {
-  // Create a simplified string format for better QR scanning
-  const qrString = `CART:${order.name}|${subtotal}|${order.cart.map(item => `${item.id}:${item.quantity}`).join(',')}|${order.requests || ''}`;
+  // Include branch in QR string
+  const qrString = `CART:${order.name}|${subtotal}|${order.cart
+    .map((item) => `${item.id}:${item.quantity}`)
+    .join(",")}|${order.requests || ""}|BRANCH:${order.branch || ""}`
 
   return (
     <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center">
@@ -19,9 +21,14 @@ function CheckoutModal({ order, subtotal, onClose }) {
           <X size={20} />
         </button>
 
-        <h2 className="text-xl font-bold text-center mb-4">
+        <h2 className="text-xl font-bold text-center mb-2">
           Present to Cashier
         </h2>
+        {order.branchName && (
+          <p className="text-center text-gray-600 mb-4">
+            Branch: <span className="font-semibold">{order.branchName}</span>
+          </p>
+        )}
 
         <div className="flex justify-center mb-4">
           <QRCodeCanvas
@@ -38,9 +45,14 @@ function CheckoutModal({ order, subtotal, onClose }) {
           <div className="text-lg font-semibold mb-2">
             Total: ₱{subtotal.toFixed(2)}
           </div>
-          <p className="text-sm text-gray-600 mb-2">
-            Customer: {order.name || 'Walk-in'}
+          <p className="text-sm text-gray-600 mb-1">
+            Customer: {order.name || "Walk-in"}
           </p>
+          {order.requests && (
+            <p className="text-sm text-gray-500 italic mb-2">
+              “{order.requests}”
+            </p>
+          )}
           <p className="text-xs text-gray-500">
             Show this QR code to the cashier
           </p>
@@ -51,7 +63,7 @@ function CheckoutModal({ order, subtotal, onClose }) {
 }
 
 export default function ShoppingCartPage() {
-  // Load order from localStorage
+  // Load order (now includes branch)
   const [order, setOrder] = useState(() => {
     const stored = localStorage.getItem("customer_order")
     return stored
@@ -60,10 +72,12 @@ export default function ShoppingCartPage() {
           name: "",
           requests: "",
           cart: [],
+          branch: "",
+          branchName: "",
         }
   })
 
-  const { name, requests, cart } = order
+  const { name, requests, cart, branchName } = order
   const [showModal, setShowModal] = useState(false)
 
   // Keep localStorage updated
@@ -81,7 +95,8 @@ export default function ShoppingCartPage() {
             ? {
                 ...item,
                 quantity: Math.max(1, item.quantity + delta),
-                totalPrice: Math.max(1, item.quantity + delta) * item.unitPrice,
+                totalPrice:
+                  Math.max(1, item.quantity + delta) * item.unitPrice,
               }
             : item
         )
@@ -113,7 +128,6 @@ export default function ShoppingCartPage() {
     }))
   }
 
-  // Subtotal
   const subtotal = cart.reduce((sum, item) => sum + item.totalPrice, 0)
 
   return (
@@ -123,7 +137,16 @@ export default function ShoppingCartPage() {
       <div className="max-w-5xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-3xl font-bold text-black">Your Cart</h1>
+          <div>
+            <h1 className="text-3xl font-bold text-black">Your Cart</h1>
+            {branchName && (
+              <div className="flex items-center text-gray-600 mt-1">
+                <MapPin size={16} className="mr-1 text-yellow-500" />
+                <span>Branch: {branchName}</span>
+              </div>
+            )}
+          </div>
+
           <a
             href="/digital-menu"
             className="flex items-center gap-2 text-gray-600 hover:text-black"

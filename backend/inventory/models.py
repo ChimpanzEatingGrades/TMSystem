@@ -367,6 +367,8 @@ class Branch(models.Model):
 
     def __str__(self):
         return self.name
+    
+
 
 
 class CustomerOrder(models.Model):
@@ -609,16 +611,6 @@ class StockBatch(models.Model):
         
         super().save(*args, **kwargs)
 
-
-class Branch(models.Model):
-    """Represents a restaurant branch/location."""
-    name = models.CharField(max_length=150, unique=True)
-
-    class Meta:
-        ordering = ["name"]
-
-    def __str__(self):
-        return self.name
 
 
 class MenuItemBranchAvailability(models.Model):
