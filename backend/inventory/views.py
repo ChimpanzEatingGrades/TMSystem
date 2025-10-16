@@ -394,8 +394,9 @@ class StockOutViewSet(viewsets.ViewSet):
         if serializer.is_valid():
             try:
                 material = RawMaterial.objects.get(id=serializer.validated_data['raw_material_id'])
-                quantity = serializer.validated_data['quantity']
+                quantity_needed = serializer.validated_data['quantity']
                 notes = serializer.validated_data.get('notes', '')
+                force_expired = request.data.get('force_expired', False)  # Allow forcing stock-out of expired items
                 
                 # Get the authenticated user
                 if request.user.is_authenticated:
@@ -405,13 +406,17 @@ class StockOutViewSet(viewsets.ViewSet):
                     performed_by_user = None
                     performed_by_name = "System"
                 
-                # Update material quantity
-                material.quantity -= quantity
-                material.save()
-                batches = material.batches.filter(quantity__gt=0).order_by('expiry_date')
+                # Check if material has enough total stock
+                if material.quantity < quantity_needed:
+                    return Response({
+                        'error': f'Insufficient stock. Available: {material.quantity} {material.unit}, Needed: {quantity_needed} {material.unit}'
+                    }, status=status.HTTP_400_BAD_REQUEST)
                 
-                if not batches.exists() and material.material_type == 'supplies':
-                    # For supplies without batches, just deduct from total
+                # Check if material has batches (perishable tracking)
+                all_batches = material.batches.filter(quantity__gt=0).order_by('expiry_date')
+                
+                # If no batches exist (supplies/non-perishables), simple deduction
+                if not all_batches.exists():
                     material.quantity -= quantity_needed
                     material.save()
                     
@@ -421,43 +426,51 @@ class StockOutViewSet(viewsets.ViewSet):
                         quantity=quantity_needed,
                         unit=material.unit,
                         reference_number=f"SO-{StockTransaction.objects.count() + 1}",
-                        notes=notes or f"Stock out - {quantity_needed} {material.unit} (Non-perishable supply)",
+                        notes=notes or f"Stock out - {quantity_needed} {material.unit} (Non-perishable item, no batch tracking)",
                         performed_by=performed_by_user,
                         performed_by_name=performed_by_name
                     )
                     
                     return Response({
-                        'message': 'Stock out successful (supply item)',
+                        'message': 'Stock out successful (non-perishable item)',
                         'transaction': StockTransactionSerializer(stock_transaction).data,
                         'remaining_stock': material.quantity
                     }, status=status.HTTP_201_CREATED)
                 
-                # For perishable items, use FIFO from batches
+                # For items with batches, use FIFO logic
                 remaining_quantity = quantity_needed
                 batches_used = []
                 expired_batches_found = []
                 
-                for batch in batches:
+                # Determine which batches to use
+                if force_expired:
+                    # Use expired batches when explicitly forced (for disposal)
+                    batches_to_use = all_batches.filter(is_expired=True).order_by('expiry_date')
+                else:
+                    # Use non-expired batches (normal FIFO)
+                    batches_to_use = all_batches.filter(is_expired=False).order_by('expiry_date')
+                    # Track expired batches for warning
+                    expired_batches = all_batches.filter(is_expired=True)
+                    for batch in expired_batches:
+                        expired_batches_found.append({
+                            'batch_id': batch.id,
+                            'quantity': float(batch.quantity),
+                            'expiry_date': str(batch.expiry_date)
+                        })
+                
+                # Process batches using FIFO
+                for batch in batches_to_use:
                     if remaining_quantity <= 0:
                         break
                     
-                    # Check if batch is expired
-                    if batch.is_expired or batch.expiry_date < timezone.now().date():
-                        expired_batches_found.append({
-                            'batch_id': batch.id,
-                            'quantity': batch.quantity,
-                            'expiry_date': batch.expiry_date
-                        })
-                        continue  # Skip expired batches
-                    
-                    # Use from this batch
                     if batch.quantity >= remaining_quantity:
                         # This batch has enough
                         batch.quantity -= remaining_quantity
                         batches_used.append({
                             'batch_id': batch.id,
                             'quantity_used': float(remaining_quantity),
-                            'expiry_date': batch.expiry_date
+                            'expiry_date': str(batch.expiry_date),
+                            'was_expired': batch.is_expired
                         })
                         remaining_quantity = 0
                         batch.save()
@@ -467,27 +480,41 @@ class StockOutViewSet(viewsets.ViewSet):
                         batches_used.append({
                             'batch_id': batch.id,
                             'quantity_used': float(quantity_from_batch),
-                            'expiry_date': batch.expiry_date
+                            'expiry_date': str(batch.expiry_date),
+                            'was_expired': batch.is_expired
                         })
                         remaining_quantity -= quantity_from_batch
                         batch.quantity = 0
                         batch.save()
                 
+                # If still insufficient stock after using available batches
                 if remaining_quantity > 0:
-                    return Response({
-                        'error': f'Insufficient non-expired stock. Needed: {quantity_needed} {material.unit}, Available (non-expired): {quantity_needed - remaining_quantity} {material.unit}',
-                        'expired_batches': expired_batches_found
-                    }, status=status.HTTP_400_BAD_REQUEST)
+                    if not force_expired and expired_batches_found:
+                        # Suggest using expired batches
+                        return Response({
+                            'error': f'Insufficient non-expired stock. Needed: {quantity_needed} {material.unit}, Available (non-expired): {quantity_needed - remaining_quantity} {material.unit}',
+                            'expired_batches': expired_batches_found,
+                            'suggestion': 'Use force_expired=true to stock out expired batches for disposal'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                    else:
+                        return Response({
+                            'error': f'Insufficient stock. Needed: {quantity_needed} {material.unit}, Available: {quantity_needed - remaining_quantity} {material.unit}'
+                        }, status=status.HTTP_400_BAD_REQUEST)
                 
                 # Update material total quantity
                 material.quantity -= quantity_needed
                 material.save()
                 
                 # Create stock transaction with batch details
-                batch_details = ', '.join([
-                    f"Batch #{b['batch_id']} ({b['quantity_used']} {material.unit}, expires {b['expiry_date']})"
-                    for b in batches_used
-                ])
+                if batches_used:
+                    batch_type = "expired" if force_expired else "FIFO"
+                    batch_details = ', '.join([
+                        f"Batch #{b['batch_id']} ({b['quantity_used']} {material.unit}, {'expired' if b['was_expired'] else 'expires'} {b['expiry_date']})"
+                        for b in batches_used
+                    ])
+                    transaction_notes = notes or f"Stock out - {quantity_needed} {material.unit}. {batch_type} batches used: {batch_details}"
+                else:
+                    transaction_notes = notes or f"Stock out - {quantity_needed} {material.unit}"
                 
                 stock_transaction = StockTransaction.objects.create(
                     transaction_type='stock_out',
@@ -495,30 +522,37 @@ class StockOutViewSet(viewsets.ViewSet):
                     quantity=quantity_needed,
                     unit=material.unit,
                     reference_number=f"SO-{StockTransaction.objects.count() + 1}",
-                    notes=notes or f"Stock out - {quantity_needed} {material.unit}. FIFO batches used: {batch_details}",
+                    notes=transaction_notes,
                     performed_by=performed_by_user,
                     performed_by_name=performed_by_name
                 )
                 
-                # Check for expired batches and create alert
-                if expired_batches_found:
+                # Create/update alerts for remaining expired batches if any
+                if not force_expired and expired_batches_found:
                     total_expired = sum(b['quantity'] for b in expired_batches_found)
                     StockAlert.objects.get_or_create(
                         raw_material=material,
                         alert_type='expired',
                         status='active',
                         defaults={
-                            'message': f'{material.name} has {len(expired_batches_found)} expired batch(es) totaling {total_expired} {material.unit}. Please stock out expired items.',
+                            'message': f'{material.name} has {len(expired_batches_found)} expired batch(es) totaling {total_expired} {material.unit}. Please stock out for disposal.',
                             'current_quantity': material.quantity,
                         }
                     )
+                elif force_expired and not expired_batches_found:
+                    # Resolve expired alerts if all expired stock is removed
+                    StockAlert.objects.filter(
+                        raw_material=material,
+                        alert_type='expired',
+                        status='active'
+                    ).update(status='resolved', resolved_at=timezone.now())
                 
                 return Response({
-                    'message': 'Stock out successful (FIFO)',
+                    'message': f'Stock out successful ({batch_type if batches_used else "non-perishable"})',
                     'transaction': StockTransactionSerializer(stock_transaction).data,
                     'remaining_stock': material.quantity,
                     'batches_used': batches_used,
-                    'expired_batches_skipped': len(expired_batches_found)
+                    'expired_batches_remaining': len(expired_batches_found) if not force_expired else 0
                 }, status=status.HTTP_201_CREATED)
                 
             except RawMaterial.DoesNotExist:
@@ -768,6 +802,50 @@ class CustomerOrderViewSet(viewsets.ModelViewSet):
         
         serializer = CustomerOrderSerializer(order)
         return Response(serializer.data)
+    
+    @action(detail=True, methods=['get'])
+    def qr_data(self, request, pk=None):
+        """Get order data for QR code generation"""
+        order = self.get_object()
+        
+        # Create a simple, scannable data structure
+        qr_data = {
+            'order_id': order.id,
+            'customer_name': order.customer_name,
+            'total_amount': float(order.total_amount),
+            'status': order.status,
+            'order_date': order.order_date.isoformat(),
+            'items_count': order.items.count()
+        }
+        
+        return Response({
+            'qr_data': qr_data,
+            'qr_string': f"ORDER:{order.id}",  # Simple format for QR scanning
+            'full_order': CustomerOrderSerializer(order).data
+        })
+    
+    @action(detail=False, methods=['post'])
+    def retrieve_by_qr(self, request):
+        """Retrieve order by QR code data"""
+        qr_string = request.data.get('qr_string', '')
+        
+        # Parse QR string format: "ORDER:123"
+        if qr_string.startswith('ORDER:'):
+            try:
+                order_id = int(qr_string.split(':')[1])
+                order = CustomerOrder.objects.get(id=order_id)
+                serializer = CustomerOrderSerializer(order)
+                return Response(serializer.data)
+            except (ValueError, CustomerOrder.DoesNotExist):
+                return Response(
+                    {'error': 'Invalid or non-existent order ID in QR code'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        
+        return Response(
+            {'error': 'Invalid QR code format'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
 
 class StockAlertViewSet(viewsets.ModelViewSet):
@@ -924,6 +1002,56 @@ class StockAlertViewSet(viewsets.ModelViewSet):
                     'days_overdue': (today - batch.expiry_date).days
                 }
                 for batch in expired_batches[:10]  # Show first 10
+            ]
+        })
+    
+    @action(detail=False, methods=['post'])
+    def check_expiring_soon(self, request):
+        """Check for batches expiring within 2 days"""
+        from .models import StockBatch
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        today = timezone.now().date()
+        threshold = today + timedelta(days=2)
+        
+        expiring_soon = StockBatch.objects.filter(
+            expiry_date__lte=threshold,
+            expiry_date__gte=today,
+            quantity__gt=0
+        ).select_related('raw_material')
+        
+        alerts_created = 0
+        
+        for batch in expiring_soon:
+            material = batch.raw_material
+            
+            alert, created = StockAlert.objects.get_or_create(
+                raw_material=material,
+                alert_type='expiring_soon',
+                status='active',
+                defaults={
+                    'message': f'{material.name} batch expiring on {batch.expiry_date} ({batch.days_until_expiry} days). Quantity: {batch.quantity} {material.unit}. Use soon or plan stock-out.',
+                    'current_quantity': material.quantity,
+                }
+            )
+            
+            if created:
+                alerts_created += 1
+        
+        return Response({
+            'message': f'Checked batches expiring within 2 days',
+            'expiring_soon_count': expiring_soon.count(),
+            'alerts_created': alerts_created,
+            'expiring_batches': [
+                {
+                    'material': batch.raw_material.name,
+                    'quantity': float(batch.quantity),
+                    'unit': batch.raw_material.unit,
+                    'expiry_date': batch.expiry_date,
+                    'days_until_expiry': batch.days_until_expiry
+                }
+                for batch in expiring_soon
             ]
         })
     

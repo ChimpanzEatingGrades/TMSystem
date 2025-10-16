@@ -18,6 +18,10 @@ Open a second bash terminal, also from the TMSYSTEM directory:
 
 %npm install lucide-react
 
+%npm install qrcode.react 
+
+%npm install jsqr
+
 %npm run dev
 
 Sample pictures from the website:
