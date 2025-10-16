@@ -1056,6 +1056,122 @@ class StockAlertViewSet(viewsets.ModelViewSet):
                 for batch in expiring_soon
             ]
         })
+    
+    @action(detail=False, methods=['post'])
+    def auto_check_all(self, request):
+        """Automatically check all stock conditions and create alerts"""
+        from .models import StockBatch
+        from datetime import timedelta
+        
+        today = timezone.now().date()
+        alerts_created = {
+            'low_stock': 0,
+            'out_of_stock': 0,
+            'reorder': 0,
+            'expired': 0,
+            'expiring_soon': 0
+        }
+        
+        # 1. Check all materials for stock levels
+        for material in RawMaterial.objects.all():
+            # Out of stock
+            if material.quantity <= 0:
+                alert, created = StockAlert.objects.get_or_create(
+                    raw_material=material,
+                    alert_type='out_of_stock',
+                    status='active',
+                    defaults={
+                        'message': f'{material.name} is out of stock. Please restock immediately.',
+                        'current_quantity': material.quantity,
+                        'threshold_value': material.minimum_threshold,
+                    }
+                )
+                if created:
+                    alerts_created['out_of_stock'] += 1
+            
+            # Low stock
+            elif material.is_low_stock:
+                alert, created = StockAlert.objects.get_or_create(
+                    raw_material=material,
+                    alert_type='low_stock',
+                    status='active',
+                    defaults={
+                        'message': f'{material.name} is running low. Current: {material.quantity} {material.unit}, Minimum: {material.minimum_threshold} {material.unit}. Please restock soon.',
+                        'current_quantity': material.quantity,
+                        'threshold_value': material.minimum_threshold,
+                    }
+                )
+                if created:
+                    alerts_created['low_stock'] += 1
+            
+            # Reorder level
+            elif material.needs_reorder:
+                alert, created = StockAlert.objects.get_or_create(
+                    raw_material=material,
+                    alert_type='reorder',
+                    status='active',
+                    defaults={
+                        'message': f'{material.name} has reached reorder level. Current: {material.quantity} {material.unit}, Reorder at: {material.reorder_level} {material.unit}. Consider placing a purchase order.',
+                        'current_quantity': material.quantity,
+                        'threshold_value': material.reorder_level,
+                    }
+                )
+                if created:
+                    alerts_created['reorder'] += 1
+        
+        # 2. Check for expired batches
+        expired_batches = StockBatch.objects.filter(
+            expiry_date__lt=today,
+            quantity__gt=0
+        ).select_related('raw_material')
+        
+        for batch in expired_batches:
+            batch.is_expired = True
+            batch.save()
+            
+            material = batch.raw_material
+            alert, created = StockAlert.objects.get_or_create(
+                raw_material=material,
+                alert_type='expired',
+                status='active',
+                defaults={
+                    'message': f'{material.name} has expired batch(es). Batch expires: {batch.expiry_date}. Quantity: {batch.quantity} {material.unit}. Remove from stock immediately.',
+                    'current_quantity': material.quantity,
+                }
+            )
+            if created:
+                alerts_created['expired'] += 1
+        
+        # 3. Check for expiring soon (within 2 days)
+        threshold = today + timedelta(days=2)
+        expiring_soon = StockBatch.objects.filter(
+            expiry_date__lte=threshold,
+            expiry_date__gte=today,
+            quantity__gt=0
+        ).select_related('raw_material')
+        
+        for batch in expiring_soon:
+            material = batch.raw_material
+            days_left = (batch.expiry_date - today).days
+            
+            alert, created = StockAlert.objects.get_or_create(
+                raw_material=material,
+                alert_type='expiring_soon',
+                status='active',
+                defaults={
+                    'message': f'{material.name} batch expiring on {batch.expiry_date} ({days_left} day{"s" if days_left != 1 else ""} left). Quantity: {batch.quantity} {material.unit}. Use soon or plan stock-out.',
+                    'current_quantity': material.quantity,
+                }
+            )
+            if created:
+                alerts_created['expiring_soon'] += 1
+        
+        return Response({
+            'message': 'Automatic stock check completed',
+            'alerts_created': alerts_created,
+            'total_alerts': sum(alerts_created.values()),
+            'active_alerts_count': StockAlert.objects.filter(status='active').count()
+        })
 
 
 class BranchViewSet(viewsets.ModelViewSet):

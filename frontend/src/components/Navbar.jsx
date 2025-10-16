@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { Menu, X, ChefHat, User, LogOut, Home, Info, ShoppingCart, ClipboardList } from "lucide-react"
 import { ACCESS_TOKEN, REFRESH_TOKEN } from "../constants"
+import NotificationPanel from "./NotificationPanel"
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false)
@@ -43,8 +44,12 @@ const Navbar = () => {
     <nav className="sticky top-0 z-50 bg-white shadow-lg border-b border-gray-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
-          {/* Logo */}
-          <div className="flex items-center">
+          {/* Logo + Notification (Left Side) */}
+          <div className="flex items-center gap-3">
+            {/* Notification Bell - Leftmost */}
+            {isAuthenticated && <NotificationPanel />}
+            
+            {/* Logo */}
             <button
               onClick={() => handleNavigation("/")}
               className="flex items-center space-x-2 text-black hover:text-gray-700 transition-colors duration-200"
@@ -146,8 +151,8 @@ const Navbar = () => {
             </div>
           </div>
 
-          {/* Desktop Auth Buttons */}
-          <div className="hidden md:block">
+          {/* Desktop Auth Buttons (Right Side) */}
+          <div className="hidden md:flex items-center gap-3">
             {isAuthenticated ? (
               <button
                 onClick={handleLogout}
@@ -175,7 +180,7 @@ const Navbar = () => {
           </div>
 
           {/* Mobile menu button */}
-          <div className="md:hidden">
+          <div className="md:hidden flex items-center gap-2">
             <button
               onClick={() => setIsOpen(!isOpen)}
               className="bg-gray-100 inline-flex items-center justify-center p-2 rounded-md text-gray-700 hover:text-black hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#FFC601]"
