@@ -584,7 +584,7 @@ class StockOutViewSet(viewsets.ViewSet):
 
 class CustomerOrderViewSet(viewsets.ModelViewSet):
     """ViewSet for customer order management"""
-    queryset = CustomerOrder.objects.prefetch_related('items__menu_item').all()
+    queryset = CustomerOrder.objects.prefetch_related('items__menu_item').select_related('branch').all()
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     
     def get_serializer_class(self):
@@ -603,6 +603,11 @@ class CustomerOrderViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Filter orders based on user permissions and query parameters"""
         queryset = super().get_queryset()
+        
+        # Filter by branch if provided
+        branch_id = self.request.query_params.get('branch_id')
+        if branch_id:
+            queryset = queryset.filter(branch_id=branch_id)
         
         # Filter by status if provided
         status = self.request.query_params.get('status')
@@ -693,19 +698,29 @@ class CustomerOrderViewSet(viewsets.ModelViewSet):
         
         today = timezone.now().date()
         
+        # Get branch filter if provided
+        branch_id = request.query_params.get('branch_id')
+        base_query = CustomerOrder.objects.all()
+        if branch_id:
+            base_query = base_query.filter(branch_id=branch_id)
+        
         stats = {
-            'total_orders': CustomerOrder.objects.count(),
-            'today_orders': CustomerOrder.objects.filter(order_date__date=today).count(),
-            'pending_orders': CustomerOrder.objects.filter(status='pending').count(),
-            'preparing_orders': CustomerOrder.objects.filter(status='preparing').count(),
-            'ready_orders': CustomerOrder.objects.filter(status='ready').count(),
-            'today_revenue': CustomerOrder.objects.filter(
+            'total_orders': base_query.count(),
+            'today_orders': base_query.filter(order_date__date=today).count(),
+            'pending_orders': base_query.filter(status='pending').count(),
+            'preparing_orders': base_query.filter(status='preparing').count(),
+            'ready_orders': base_query.filter(status='ready').count(),
+            'today_revenue': base_query.filter(
                 order_date__date=today, 
                 status__in=['completed', 'ready']
             ).aggregate(total=Sum('total_amount'))['total'] or 0,
-            'status_breakdown': CustomerOrder.objects.values('status').annotate(
+            'status_breakdown': base_query.values('status').annotate(
                 count=Count('id')
-            ).order_by('status')
+            ).order_by('status'),
+            'by_branch': CustomerOrder.objects.values('branch__name').annotate(
+                count=Count('id'),
+                revenue=Sum('total_amount')
+            ).order_by('-count')
         }
         
         return Response(stats)
