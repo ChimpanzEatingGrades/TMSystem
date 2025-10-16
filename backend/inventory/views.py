@@ -19,6 +19,7 @@ from .models import (
     OrderItem,
     StockAlert,
     Branch,
+    MenuItemBranchAvailability,
 )
 from .serializers import (
     RawMaterialSerializer,
@@ -36,6 +37,7 @@ from .serializers import (
     OrderStatusUpdateSerializer,
     StockAlertSerializer,
     BranchSerializer,
+    MenuItemBranchAvailabilitySerializer,
 )
 
 
@@ -983,4 +985,10 @@ class StockAlertViewSet(viewsets.ModelViewSet):
 class BranchViewSet(viewsets.ModelViewSet):
     queryset = Branch.objects.all()
     serializer_class = BranchSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+
+
+class MenuItemBranchAvailabilityViewSet(viewsets.ModelViewSet):
+    queryset = MenuItemBranchAvailability.objects.select_related("menu_item", "branch").all()
+    serializer_class = MenuItemBranchAvailabilitySerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]

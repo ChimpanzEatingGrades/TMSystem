@@ -196,12 +196,6 @@ class MenuItem(models.Model):
     )
     picture = models.ImageField(upload_to="menu_items/", null=True, blank=True)
 
-    valid_from = models.DateField(null=True, blank=True)
-    valid_until = models.DateField(null=True, blank=True)
-
-    available_from = models.TimeField(null=True, blank=True)
-    available_to = models.TimeField(null=True, blank=True)
-
     description = models.TextField(blank=True)
 
     recipe = models.ForeignKey(
@@ -211,7 +205,6 @@ class MenuItem(models.Model):
         MenuCategory, on_delete=models.SET_NULL, null=True, blank=True, related_name="menu_items"
     )
 
-    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -221,13 +214,6 @@ class MenuItem(models.Model):
 
     def __str__(self):
         return self.name
-
-    def clean(self):
-        """Ensure valid_until is not earlier than valid_from"""
-        if self.valid_from and self.valid_until and self.valid_until < self.valid_from:
-            raise ValidationError(
-                {"valid_until": "valid_until must be on or after valid_from"}
-            )
 
 
 class PurchaseOrder(models.Model):
@@ -612,3 +598,27 @@ class Branch(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class MenuItemBranchAvailability(models.Model):
+    menu_item = models.ForeignKey("MenuItem", on_delete=models.CASCADE, related_name="branch_availability")
+    branch = models.ForeignKey("Branch", on_delete=models.CASCADE, related_name="menuitem_availability")
+    valid_from = models.DateField(null=True, blank=True)
+    valid_until = models.DateField(null=True, blank=True)
+    available_from = models.TimeField(null=True, blank=True)
+    available_to = models.TimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        unique_together = ("menu_item", "branch")
+        verbose_name = "Menu Item Branch Availability"
+        verbose_name_plural = "Menu Item Branch Availabilities"
+
+    def __str__(self):
+        return f"{self.menu_item.name} @ {self.branch.name}"
+    
+    def clean(self):
+        if self.valid_from and self.valid_until and self.valid_from > self.valid_until:
+            raise ValidationError("Valid From date must be before Valid Until date.")
+        if self.available_from and self.available_to and self.available_from >= self.available_to:
+            raise ValidationError("Available From time must be before Available To time.")

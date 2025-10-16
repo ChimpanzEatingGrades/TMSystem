@@ -1,6 +1,7 @@
 # inventory/admin.py
 from django.contrib import admin
 from .models import RawMaterial, Recipe, RecipeItem, MenuCategory, MenuItem, CustomerOrder, OrderItem, Branch
+from .models import MenuItemBranchAvailability
 
 @admin.register(RawMaterial)
 class RawMaterialAdmin(admin.ModelAdmin):
@@ -28,13 +29,13 @@ class MenuCategoryAdmin(admin.ModelAdmin):
 
 @admin.register(MenuItem)
 class MenuItemAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "price", "picture",
-            "valid_from", "valid_until", "description",
-            "available_from", "available_to",  # <-- ADD THESE
-            "recipe", "recipe_id", "category",
-            "is_active", "created_at", "updated_at",)
+    list_display = (
+        "id", "name", "price", "picture", "description",
+        "recipe", "recipe_id", "category",
+        "created_at", "updated_at",
+    )
     search_fields = ("name", "description")
-    list_filter = ("is_active", "category")
+    list_filter = ("category",)  # <-- removed "is_active"
 
 
 class OrderItemInline(admin.TabularInline):
@@ -76,3 +77,10 @@ class OrderItemAdmin(admin.ModelAdmin):
 class BranchAdmin(admin.ModelAdmin):
     list_display = ("id", "name")
     search_fields = ("name",)
+
+
+@admin.register(MenuItemBranchAvailability)
+class MenuItemBranchAvailabilityAdmin(admin.ModelAdmin):
+    list_display = ("menu_item", "branch", "valid_from", "valid_until", "available_from", "available_to", "is_active")
+    list_filter = ("branch", "is_active")
+    search_fields = ("menu_item__name", "branch__name")

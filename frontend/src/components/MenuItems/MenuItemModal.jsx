@@ -1,159 +1,222 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { X, Upload, Calendar, Clock, Tag, ImageIcon } from "lucide-react"
-import { createMenuItem, updateMenuItem, getCategories } from "../../api/inventoryAPI"
-import RecipeModal from "./RecipeModal"
+import { useState, useEffect } from "react";
+import { X, Upload, Tag, ImageIcon, MapPin } from "lucide-react";
+import {
+  createMenuItem,
+  updateMenuItem,
+  getCategories,
+  getBranches,
+  createMenuItemBranchAvailability,
+  updateMenuItemBranchAvailability,
+  deleteMenuItemBranchAvailability,
+} from "../../api/inventoryAPI";
+import RecipeModal from "./RecipeModal";
 
 export default function MenuItemModal({ onClose, onSave, editingItem }) {
-  const [categories, setCategories] = useState([])
-  const [imagePreview, setImagePreview] = useState(editingItem?.picture || null)
-  const [showRecipe, setShowRecipe] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [errors, setErrors] = useState({})
+  const [categories, setCategories] = useState([]);
+  const [branches, setBranches] = useState([]);
+  const [branchFields, setBranchFields] = useState([]);
+  const [imagePreview, setImagePreview] = useState(editingItem?.picture || null);
+  const [showRecipe, setShowRecipe] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState({});
 
+  // ✅ use `category` instead of `category_id`
   const [formData, setFormData] = useState({
     name: editingItem?.name || "",
     description: editingItem?.description || "",
     price: editingItem?.price || "",
-    valid_from: editingItem?.valid_from || "",
-    valid_until: editingItem?.valid_until || "",
-    no_end_date: !editingItem?.valid_until,
-    available_from: editingItem?.available_from || "00:00",
-    available_to: editingItem?.available_to || "23:59",
-    is_active: typeof editingItem?.is_active === "boolean" ? editingItem.is_active : true,
     picture: null,
-    category_id: editingItem?.category?.id || "",
-  })
+    category: editingItem?.category?.id || editingItem?.category || "",
+  });
 
   useEffect(() => {
-    loadCategories()
-  }, [])
+    loadCategories();
+    loadBranches();
+  }, [editingItem]);
+
+  useEffect(() => {
+    if (branches.length > 0) {
+      setBranchFields(
+        branches.map((branch) => {
+          const found = editingItem?.branch_availability?.find(
+            (a) => a.branch === branch.id
+          );
+          return {
+            branch_id: branch.id,
+            branch_name: branch.name,
+            id: found?.id || null,
+            valid_from: found?.valid_from || "",
+            valid_until: found?.valid_until || "",
+            available_from: found?.available_from || "00:00",
+            available_to: found?.available_to || "23:59",
+            is_active:
+              typeof found?.is_active === "boolean" ? found.is_active : false,
+          };
+        })
+      );
+    }
+  }, [branches, editingItem]);
 
   const loadCategories = async () => {
     try {
-      const res = await getCategories()
-      const data = res.data?.results ?? res.data
-      setCategories(Array.isArray(data) ? data : [])
+      const res = await getCategories();
+      const data = res.data?.results ?? res.data;
+      setCategories(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error("Failed to load categories", err)
+      console.error("Failed to load categories", err);
     }
-  }
+  };
+
+  const loadBranches = async () => {
+    try {
+      const res = await getBranches();
+      const data = res.data?.results ?? res.data;
+      setBranches(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Failed to load branches", err);
+    }
+  };
 
   const validateForm = () => {
-    const newErrors = {}
-
-    if (!formData.name.trim()) {
-      newErrors.name = "Product name is required"
-    }
-
-    if (!formData.price || formData.price <= 0) {
-      newErrors.price = "Valid price is required"
-    }
-
-    if (!formData.category_id) {
-      newErrors.category_id = "Category is required"
-    }
-
-    if (formData.valid_from && formData.valid_until && !formData.no_end_date) {
-      if (new Date(formData.valid_from) > new Date(formData.valid_until)) {
-        newErrors.valid_until = "End date must be after start date"
-      }
-    }
-
-    if (formData.available_from && formData.available_to) {
-      if (formData.available_from >= formData.available_to) {
-        newErrors.available_to = "Available to time must be after available from time"
-      }
-    }
-
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
+    const newErrors = {};
+    if (!formData.name.trim()) newErrors.name = "Product name is required";
+    if (!formData.price || formData.price <= 0)
+      newErrors.price = "Valid price is required";
+    if (!formData.category) newErrors.category = "Category is required";
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const handleChange = (e) => {
-    const { name, value, type, checked, files } = e.target
-
+    const { name, value, type, files } = e.target;
     if (files && files[0]) {
-      const file = files[0]
-      setFormData({ ...formData, [name]: file })
-      setImagePreview(URL.createObjectURL(file))
-      return
+      setFormData({ ...formData, [name]: files[0] });
+      setImagePreview(URL.createObjectURL(files[0]));
+      return;
     }
-
-    if (name === "no_end_date") {
-      setFormData({
-        ...formData,
-        [name]: checked,
-        valid_until: checked ? "" : formData.valid_until,
-      })
-      return
-    }
-
     setFormData({
       ...formData,
-      [name]: type === "checkbox" ? checked : value,
-    })
+      [name]: type === "checkbox" ? e.target.checked : value,
+    });
+    if (errors[name]) setErrors({ ...errors, [name]: "" });
+  };
 
-    // Clear error when user starts typing
-    if (errors[name]) {
-      setErrors({ ...errors, [name]: "" })
-    }
-  }
+  const handleBranchFieldChange = (idx, field, value) => {
+    setBranchFields((prev) =>
+      prev.map((b, i) =>
+        i === idx
+          ? {
+              ...b,
+              [field]:
+                field === "is_active"
+                  ? value === "true" || value === true
+                  : value,
+            }
+          : b
+      )
+    );
+  };
 
   const handleSubmit = async (e) => {
-    e.preventDefault()
+    e.preventDefault();
+    if (!validateForm()) return;
+    setLoading(true);
+    setErrors({});
 
-    if (!validateForm()) {
-      return
-    }
-
-    setLoading(true)
-    const data = new FormData()
-
-    Object.keys(formData).forEach((key) => {
-      if (key === "no_end_date") return
-      if (formData[key] !== null && formData[key] !== "") {
-        data.append(key, formData[key])
-      }
-    })
+    const data = new FormData();
+    Object.entries(formData).forEach(([key, value]) => {
+      if (value !== null && value !== "") data.append(key, value);
+    });
 
     try {
+      let menuItemId = editingItem?.id;
+      let res;
       if (editingItem) {
-        await updateMenuItem(editingItem.id, data)
+        res = await updateMenuItem(editingItem.id, data);
+        menuItemId = res.data?.id || editingItem.id;
       } else {
-        await createMenuItem(data)
+        res = await createMenuItem(data);
+        menuItemId = res.data?.id || res.id;
       }
-      onSave()
+
+      menuItemId = Number(menuItemId);
+      if (!menuItemId || isNaN(menuItemId)) {
+        throw new Error("Menu item ID not found");
+      }
+
+      // ✅ Handle Branch Availabilities
+      for (const branch of branchFields) {
+        const payload = {
+          menu_item: menuItemId,
+          branch: branch.branch_id,
+          valid_from: branch.valid_from || null,
+          valid_until: branch.valid_until || null,
+          available_from: branch.available_from || null,
+          available_to: branch.available_to || null,
+          is_active: branch.is_active,
+        };
+
+        if (branch.id) {
+          if (
+            branch.is_active ||
+            branch.valid_from ||
+            branch.valid_until ||
+            branch.available_from ||
+            branch.available_to
+          ) {
+            await updateMenuItemBranchAvailability(branch.id, payload);
+          } else {
+            await deleteMenuItemBranchAvailability(branch.id);
+          }
+        } else {
+          if (
+            branch.is_active ||
+            branch.valid_from ||
+            branch.valid_until ||
+            branch.available_from ||
+            branch.available_to
+          ) {
+            await createMenuItemBranchAvailability(payload);
+          }
+        }
+      }
+
+      onSave();
     } catch (err) {
-      console.error("Save failed", err)
-      setErrors({ submit: "Failed to save menu item. Please try again." })
+      console.error("Save failed", err);
+      setErrors({ submit: "Failed to save menu item. Please try again." });
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-2xl font-bold text-black">{editingItem ? "Edit Menu Item" : "Add New Menu Item"}</h2>
+          <h2 className="text-2xl font-bold text-black">
+            {editingItem ? "Edit Menu Item" : "Add New Menu Item"}
+          </h2>
           <button
             onClick={onClose}
-            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors duration-200"
+            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
           >
             <X size={24} />
           </button>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="overflow-y-auto max-h-[calc(90vh-140px)]">
+        <form
+          onSubmit={handleSubmit}
+          className="overflow-y-auto max-h-[calc(90vh-140px)]"
+        >
           <div className="p-6 space-y-6">
-            {/* Error Message */}
             {errors.submit && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                <div className="text-red-800 text-sm">{errors.submit}</div>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-800 text-sm">
+                {errors.submit}
               </div>
             )}
 
@@ -166,22 +229,28 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Product Name *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Product Name *
+                  </label>
                   <input
                     type="text"
                     name="name"
                     value={formData.name}
                     onChange={handleChange}
-                    className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFC601] focus:border-transparent transition-colors ${
+                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-[#FFC601] ${
                       errors.name ? "border-red-300" : "border-gray-300"
                     }`}
                     placeholder="Enter product name"
                   />
-                  {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
+                  {errors.name && (
+                    <p className="text-red-500 text-xs mt-1">{errors.name}</p>
+                  )}
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Price (₱) *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Price (₱) *
+                  </label>
                   <input
                     type="number"
                     name="price"
@@ -189,35 +258,41 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
                     onChange={handleChange}
                     min="0"
                     step="0.01"
-                    className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFC601] focus:border-transparent transition-colors ${
+                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-[#FFC601] ${
                       errors.price ? "border-red-300" : "border-gray-300"
                     }`}
                     placeholder="0.00"
                   />
-                  {errors.price && <p className="text-red-500 text-xs mt-1">{errors.price}</p>}
+                  {errors.price && (
+                    <p className="text-red-500 text-xs mt-1">{errors.price}</p>
+                  )}
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Description
+                </label>
                 <textarea
                   name="description"
                   value={formData.description}
                   onChange={handleChange}
                   rows={3}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFC601] focus:border-transparent transition-colors resize-none"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#FFC601]"
                   placeholder="Enter product description"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Category *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Category *
+                </label>
                 <select
-                  name="category_id"
-                  value={formData.category_id}
+                  name="category"
+                  value={formData.category}
                   onChange={handleChange}
-                  className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFC601] focus:border-transparent transition-colors appearance-none bg-white ${
-                    errors.category_id ? "border-red-300" : "border-gray-300"
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-[#FFC601] ${
+                    errors.category ? "border-red-300" : "border-gray-300"
                   }`}
                 >
                   <option value="">Select Category</option>
@@ -227,17 +302,17 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
                     </option>
                   ))}
                 </select>
-                {errors.category_id && <p className="text-red-500 text-xs mt-1">{errors.category_id}</p>}
+                {errors.category && (
+                  <p className="text-red-500 text-xs mt-1">{errors.category}</p>
+                )}
               </div>
             </div>
 
-            {/* Image Upload */}
+            {/* Product Image */}
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-black flex items-center gap-2">
-                <ImageIcon size={20} />
-                Product Image
+                <ImageIcon size={20} /> Product Image
               </h3>
-
               <div className="flex items-start gap-4">
                 <div className="flex-1">
                   <input
@@ -250,19 +325,21 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
                   />
                   <button
                     type="button"
-                    onClick={() => document.getElementById("pictureUpload").click()}
-                    className="w-full border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-[#FFC601] hover:bg-yellow-50 transition-colors duration-200"
+                    onClick={() =>
+                      document.getElementById("pictureUpload").click()
+                    }
+                    className="w-full border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-[#FFC601] hover:bg-yellow-50 transition"
                   >
                     <Upload className="mx-auto mb-2 text-gray-400" size={24} />
-                    <p className="text-sm text-gray-600">{imagePreview ? "Change Image" : "Click to upload image"}</p>
-                    <p className="text-xs text-gray-500 mt-1">PNG, JPG up to 10MB</p>
+                    <p className="text-sm text-gray-600">
+                      {imagePreview ? "Change Image" : "Click to upload image"}
+                    </p>
                   </button>
                 </div>
-
                 {imagePreview && (
                   <div className="w-24 h-24 rounded-lg overflow-hidden border border-gray-200">
                     <img
-                      src={imagePreview || "/placeholder.svg"}
+                      src={imagePreview}
                       alt="Preview"
                       className="w-full h-full object-cover"
                     />
@@ -271,115 +348,115 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
               </div>
             </div>
 
-            {/* Availability Settings */}
+            {/* Branch Availability */}
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-black flex items-center gap-2">
-                <Calendar size={20} />
-                Availability Settings
+                <MapPin size={20} /> Branch Availability
               </h3>
+              {branchFields.length === 0 ? (
+                <div className="text-gray-500">No branches found.</div>
+              ) : (
+                branchFields.map((branch, idx) => (
+                  <div
+                    key={branch.branch_id}
+                    className="border rounded-lg p-4 mb-2"
+                  >
+                    <div className="font-medium mb-2">{branch.branch_name}</div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">
+                          Valid From
+                        </label>
+                        <input
+                          type="date"
+                          value={branch.valid_from}
+                          onChange={(e) =>
+                            handleBranchFieldChange(
+                              idx,
+                              "valid_from",
+                              e.target.value
+                            )
+                          }
+                          className="w-full border border-gray-300 rounded px-2 py-1"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">
+                          Valid Until
+                        </label>
+                        <input
+                          type="date"
+                          value={branch.valid_until}
+                          onChange={(e) =>
+                            handleBranchFieldChange(
+                              idx,
+                              "valid_until",
+                              e.target.value
+                            )
+                          }
+                          className="w-full border border-gray-300 rounded px-2 py-1"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">
+                          Status
+                        </label>
+                        <select
+                          value={branch.is_active ? "true" : "false"}
+                          onChange={(e) =>
+                            handleBranchFieldChange(
+                              idx,
+                              "is_active",
+                              e.target.value
+                            )
+                          }
+                          className="w-full border border-gray-300 rounded px-2 py-1"
+                        >
+                          <option value="true">Active</option>
+                          <option value="false">Inactive</option>
+                        </select>
+                      </div>
+                    </div>
 
-              {/* Date Range */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Valid From</label>
-                  <input
-                    type="date"
-                    name="valid_from"
-                    value={formData.valid_from}
-                    onChange={handleChange}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFC601] focus:border-transparent transition-colors"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Valid Until</label>
-                  <input
-                    type="date"
-                    name="valid_until"
-                    value={formData.valid_until}
-                    onChange={handleChange}
-                    disabled={formData.no_end_date}
-                    className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFC601] focus:border-transparent transition-colors ${
-                      formData.no_end_date ? "bg-gray-100 text-gray-400" : ""
-                    } ${errors.valid_until ? "border-red-300" : ""}`}
-                  />
-                  {errors.valid_until && <p className="text-red-500 text-xs mt-1">{errors.valid_until}</p>}
-                </div>
-              </div>
-
-              <label className="flex items-center gap-3 text-sm">
-                <input
-                  type="checkbox"
-                  name="no_end_date"
-                  checked={formData.no_end_date}
-                  onChange={handleChange}
-                  className="w-4 h-4 text-[#FFC601] border-gray-300 rounded focus:ring-[#FFC601]"
-                />
-                <span className="text-gray-700">No end date (available indefinitely)</span>
-              </label>
-
-              {/* Time Range */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                    <Clock size={16} />
-                    Available From
-                  </label>
-                  <input
-                    type="time"
-                    name="available_from"
-                    value={formData.available_from}
-                    onChange={handleChange}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFC601] focus:border-transparent transition-colors"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                    <Clock size={16} />
-                    Available To
-                  </label>
-                  <input
-                    type="time"
-                    name="available_to"
-                    value={formData.available_to}
-                    onChange={handleChange}
-                    className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFC601] focus:border-transparent transition-colors ${
-                      errors.available_to ? "border-red-300" : ""
-                    }`}
-                  />
-                  {errors.available_to && <p className="text-red-500 text-xs mt-1">{errors.available_to}</p>}
-                </div>
-              </div>
-
-              {/* Status */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      name="is_active"
-                      value={true}
-                      checked={formData.is_active === true}
-                      onChange={(e) => setFormData({ ...formData, is_active: true })}
-                      className="w-4 h-4 text-[#FFC601] border-gray-300 focus:ring-[#FFC601]"
-                    />
-                    <span className="text-green-700 font-medium">Active</span>
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      name="is_active"
-                      value={false}
-                      checked={formData.is_active === false}
-                      onChange={(e) => setFormData({ ...formData, is_active: false })}
-                      className="w-4 h-4 text-[#FFC601] border-gray-300 focus:ring-[#FFC601]"
-                    />
-                    <span className="text-red-700 font-medium">Inactive</span>
-                  </label>
-                </div>
-              </div>
+                    <div className="grid grid-cols-2 gap-4 mt-2">
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">
+                          Available From (Time)
+                        </label>
+                        <input
+                          type="time"
+                          value={branch.available_from}
+                          onChange={(e) =>
+                            handleBranchFieldChange(
+                              idx,
+                              "available_from",
+                              e.target.value
+                            )
+                          }
+                          className="w-full border border-gray-300 rounded px-2 py-1"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">
+                          Available To (Time)
+                        </label>
+                        <input
+                          type="time"
+                          value={branch.available_to}
+                          onChange={(e) =>
+                            handleBranchFieldChange(
+                              idx,
+                              "available_to",
+                              e.target.value
+                            )
+                          }
+                          className="w-full border border-gray-300 rounded px-2 py-1"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
 
             {/* Recipe Button */}
@@ -399,14 +476,14 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-3 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors duration-200"
+              className="px-6 py-3 text-gray-700 font-medium rounded-lg hover:bg-gray-200"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="px-6 py-3 bg-[#FFC601] hover:bg-yellow-500 text-black font-semibold rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="px-6 py-3 bg-[#FFC601] hover:bg-yellow-500 text-black font-semibold rounded-lg transition disabled:opacity-50 flex items-center gap-2"
             >
               {loading ? (
                 <>
@@ -434,5 +511,5 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
         />
       )}
     </div>
-  )
+  );
 }

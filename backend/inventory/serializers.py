@@ -17,7 +17,8 @@ from .models import (
     OrderItem,
     StockAlert,
     StockBatch,
-    Branch
+    Branch,
+    MenuItemBranchAvailability
 )
 
 class UnitOfMeasurementSerializer(serializers.ModelSerializer):
@@ -136,60 +137,41 @@ class RecipeSerializer(serializers.ModelSerializer):
 class MenuCategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = MenuCategory
-        fields = ["id", "name"]
+        fields = ["id", "name"]  # Only id and name
 
 
 # MenuItem serializer: supports image upload (ImageField)
+class MenuItemBranchAvailabilitySerializer(serializers.ModelSerializer):
+    menu_item = serializers.PrimaryKeyRelatedField(queryset=MenuItem.objects.all())
+    branch = serializers.PrimaryKeyRelatedField(queryset=Branch.objects.all())
+
+    class Meta:
+        model = MenuItemBranchAvailability
+        fields = [
+            "id", "menu_item", "branch",
+            "valid_from", "valid_until",
+            "available_from", "available_to",
+            "is_active",
+        ]
+
 class MenuItemSerializer(serializers.ModelSerializer):
-    category = MenuCategorySerializer(read_only=True)
-    category_id = serializers.PrimaryKeyRelatedField(
-        queryset=MenuCategory.objects.all(), source="category", write_only=True, allow_null=True, required=False
-    )
+    branch_availability = MenuItemBranchAvailabilitySerializer(many=True, read_only=True)
     recipe = RecipeSerializer(read_only=True)
     recipe_id = serializers.PrimaryKeyRelatedField(
-        queryset=Recipe.objects.all(), source="recipe", write_only=True, allow_null=True, required=False
+        source='recipe',
+        queryset=Recipe.objects.all(),
+        write_only=True,
+        required=False
     )
-    picture = serializers.ImageField(required=False, allow_null=True)
-    # Computed availability based on recipe stock
-    is_in_stock = serializers.SerializerMethodField()
-    available_portions = serializers.SerializerMethodField()
+
 
     class Meta:
         model = MenuItem
         fields = [
-            "id", "name", "price", "picture",
-            "valid_from", "valid_until", "description",
-            "available_from", "available_to",
-            "recipe", "recipe_id", "category", "category_id",
-            "is_active", "created_at", "updated_at",
-            # Availability
-            "is_in_stock", "available_portions",
+            "id", "name", "price", "picture", "description",
+            "recipe", "recipe_id", "category", "created_at", "updated_at",
+            "branch_availability"
         ]
-
-    def get_is_in_stock(self, obj):
-        portions = self.get_available_portions(obj)
-        return portions > 0
-
-    def get_available_portions(self, obj):
-        # If no recipe, treat as unlimited stock
-        if not obj.recipe:
-            return 999999
-        # Compute max portions based on limiting ingredient in recipe
-        try:
-            portions = []
-            yield_quantity = obj.recipe.yield_quantity or Decimal('1')
-            for recipe_item in obj.recipe.items.all():
-                material = recipe_item.raw_material
-                if not material or material.quantity is None or recipe_item.quantity is None or yield_quantity == 0:
-                    return 0
-                # portions = floor(material.quantity / (recipe_item.quantity / yield_quantity))
-                required_per_portion = recipe_item.quantity / yield_quantity
-                if required_per_portion <= 0:
-                    return 0
-                portions.append(int(material.quantity // required_per_portion))
-            return min(portions) if portions else 0
-        except Exception:
-            return 0
 
 class PurchaseOrderItemSerializer(serializers.ModelSerializer):
     unit_name = serializers.CharField(source='unit.name', read_only=True)
@@ -232,10 +214,8 @@ class PurchaseOrderItemSerializer(serializers.ModelSerializer):
         unit_value = mutable.get('unit')
         if isinstance(unit_value, str):
             try:
-                # if it's numeric in string form, let DRF handle it
                 int(unit_value)
             except ValueError:
-                # treat as abbreviation
                 try:
                     unit_obj = UnitOfMeasurement.objects.get(abbreviation=unit_value)
                     mutable['unit'] = unit_obj.pk
@@ -243,7 +223,6 @@ class PurchaseOrderItemSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({
                         'unit': f"Unknown unit abbreviation '{unit_value}'"
                     })
-        # total_price is computed in model save; no need to pass it from client
         return super().to_internal_value(mutable)
     
     def validate_shelf_life_days(self, value):
@@ -271,35 +250,28 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
         fields = ['purchase_date', 'notes', 'items']
     
     def to_representation(self, instance):
-        # Return the full order data including items and calculated fields
         return PurchaseOrderSerializer(instance).data
     
     def create(self, validated_data):
         items_data = validated_data.pop('items')
         request = self.context.get('request')
         
-        # Get the authenticated user
         if request and hasattr(request, 'user') and request.user.is_authenticated:
             encoded_by_user = request.user
             encoded_by_name = request.user.username
         else:
-            # Fallback for testing or if no user is authenticated
             encoded_by_user = None
             encoded_by_name = "System"
         
-        # Create the purchase order with the encoded_by fields
         purchase_order = PurchaseOrder.objects.create(
             encoded_by=encoded_by_user,
             encoded_by_name=encoded_by_name,
             **validated_data
         )
         
-        # items_data is already validated (internal) at this point.
-        # Create items directly to avoid double-validation errors on 'unit'.
         for item in items_data:
             PurchaseOrderItem.objects.create(purchase_order=purchase_order, **item)
         
-        # Update inventory automatically
         self.update_inventory(purchase_order)
         
         return purchase_order
@@ -309,40 +281,34 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
         return data
     
     def update_inventory(self, purchase_order):
-        """Automatically update inventory when a purchase order is created"""
         from datetime import timedelta
         from .models import StockBatch
         
         for item in purchase_order.items.all():
             print(f"Processing item: {item.name}, Quantity: {item.quantity}")
             
-            # Get shelf_life_days and material_type from the item data if available
             item_shelf_life = getattr(item, 'shelf_life_days', None)
             item_material_type = getattr(item, 'material_type', None) or 'raw'
             
-            # Case-insensitive match on name, exact match on unit abbreviation
             material = RawMaterial.objects.filter(
                 name__iexact=item.name,
                 unit=item.unit.abbreviation,
             ).first()
 
             if not material:
-                # Create new material with the provided shelf life and type
                 material = RawMaterial.objects.create(
                     name=item.name.strip(),
                     unit=item.unit.abbreviation,
                     quantity=0,
-                    shelf_life_days=item_shelf_life,  # Can be None for supplies
+                    shelf_life_days=item_shelf_life,
                     material_type=item_material_type
                 )
                 print(f"Created new material: {material.name} with shelf_life: {material.shelf_life_days} days, type: {material.material_type}")
             
-            # Only create batches with expiry dates for perishable items
             if item_shelf_life is not None:
                 batch_shelf_life = item_shelf_life
                 expiry_date = purchase_order.purchase_date + timedelta(days=batch_shelf_life)
                 
-                # Create a new stock batch for this purchase with custom shelf life
                 batch = StockBatch.objects.create(
                     raw_material=material,
                     purchase_order=purchase_order,
@@ -353,17 +319,14 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
                 print(f"Created batch: {batch.quantity} {material.unit} of {material.name}, expires on {expiry_date} ({batch_shelf_life} days shelf life)")
                 notes_text = f"Stock in from Purchase Order #{purchase_order.id} (Batch expires: {expiry_date}, {batch_shelf_life} day shelf life)"
             else:
-                # For supplies, don't create batch (no expiry tracking)
                 print(f"Skipping batch creation for supply item: {material.name} (non-perishable)")
                 notes_text = f"Stock in from Purchase Order #{purchase_order.id} (Non-perishable supply item)"
             
-            # Add the purchased quantity to existing inventory
             material.quantity += item.quantity
             material.save()
             
             print(f"Material after save - ID: {material.id}, Total Quantity: {material.quantity}")
             
-            # Create stock transaction record
             StockTransaction.objects.create(
                 transaction_type='stock_in',
                 raw_material=material,
@@ -388,7 +351,6 @@ class StockTransactionSerializer(serializers.ModelSerializer):
 
 
 class StockOutSerializer(serializers.Serializer):
-    """Serializer for stock out operations"""
     raw_material_id = serializers.IntegerField()
     quantity = serializers.DecimalField(max_digits=12, decimal_places=3, min_value=Decimal('0.0001'))
     notes = serializers.CharField(required=False, allow_blank=True)
@@ -416,7 +378,6 @@ class StockOutSerializer(serializers.Serializer):
 
 # Customer Order Serializers
 class OrderItemSerializer(serializers.ModelSerializer):
-    """Serializer for order items"""
     menu_item_name = serializers.CharField(source='menu_item.name', read_only=True)
     menu_item_description = serializers.CharField(source='menu_item.description', read_only=True)
     menu_item_picture = serializers.ImageField(source='menu_item.picture', read_only=True)
@@ -427,24 +388,20 @@ class OrderItemSerializer(serializers.ModelSerializer):
             'id', 'menu_item', 'menu_item_name', 'menu_item_description', 'menu_item_picture',
             'quantity', 'unit_price', 'total_price', 'special_instructions'
         ]
-        # unit_price is computed from MenuItem.price during order creation
         read_only_fields = ['total_price', 'unit_price']
 
     def validate_menu_item(self, value):
-        """Ensure menu item is active"""
         if not value.is_active:
             raise serializers.ValidationError("This menu item is not available")
         return value
 
     def validate_quantity(self, value):
-        """Ensure quantity is positive"""
         if value <= 0:
             raise serializers.ValidationError("Quantity must be greater than 0")
         return value
 
 
 class CustomerOrderSerializer(serializers.ModelSerializer):
-    """Serializer for customer orders"""
     items = OrderItemSerializer(many=True, read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     processed_by_username = serializers.CharField(source='processed_by.username', read_only=True)
@@ -461,7 +418,6 @@ class CustomerOrderSerializer(serializers.ModelSerializer):
 
 
 class CustomerOrderCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating customer orders"""
     items = OrderItemSerializer(many=True, write_only=True)
     
     class Meta:
@@ -472,15 +428,12 @@ class CustomerOrderCreateSerializer(serializers.ModelSerializer):
         ]
     
     def to_representation(self, instance):
-        """Return the full order data including items and calculated fields"""
         return CustomerOrderSerializer(instance).data
     
     def validate_items(self, value):
-        """Validate order items"""
         if not value:
             raise serializers.ValidationError("Order must have at least one item")
         
-        # Check for duplicate menu items
         menu_item_ids = [item['menu_item'].id for item in value]
         if len(menu_item_ids) != len(set(menu_item_ids)):
             raise serializers.ValidationError("Duplicate menu items are not allowed")
@@ -488,11 +441,9 @@ class CustomerOrderCreateSerializer(serializers.ModelSerializer):
         return value
     
     def create(self, validated_data):
-        """Create order with items"""
         items_data = validated_data.pop('items')
         request = self.context.get('request')
         
-        # Calculate subtotal
         subtotal = Decimal('0.00')
         for item_data in items_data:
             menu_item = item_data['menu_item']
@@ -503,7 +454,6 @@ class CustomerOrderCreateSerializer(serializers.ModelSerializer):
         
         validated_data['subtotal'] = subtotal
         
-        # Get the authenticated user for processing
         if request and hasattr(request, 'user') and request.user.is_authenticated:
             processed_by_user = request.user
             processed_by_name = request.user.username
@@ -514,29 +464,22 @@ class CustomerOrderCreateSerializer(serializers.ModelSerializer):
         validated_data['processed_by'] = processed_by_user
         validated_data['processed_by_name'] = processed_by_name
         
-        # Create the order
         with transaction.atomic():
             order = CustomerOrder.objects.create(**validated_data)
             
-            # Create order items
             for item_data in items_data:
                 OrderItem.objects.create(order=order, **item_data)
             
-            # Update inventory (stock out)
             self.update_inventory(order)
         
         return order
     
     def update_inventory(self, order):
-        """Update inventory when order is created"""
         for item in order.items.all():
             if item.menu_item.recipe:
-                # Process recipe ingredients
                 for recipe_item in item.menu_item.recipe.items.all():
-                    # Calculate required quantity based on order quantity
                     required_quantity = (recipe_item.quantity * item.quantity) / item.menu_item.recipe.yield_quantity
                     
-                    # Update raw material stock
                     material = recipe_item.raw_material
                     if material.quantity < required_quantity:
                         raise serializers.ValidationError(
@@ -548,7 +491,6 @@ class CustomerOrderCreateSerializer(serializers.ModelSerializer):
                     material.quantity -= required_quantity
                     material.save()
                     
-                    # Create stock transaction record
                     StockTransaction.objects.create(
                         transaction_type='stock_out',
                         raw_material=material,
@@ -561,14 +503,11 @@ class CustomerOrderCreateSerializer(serializers.ModelSerializer):
 
 
 class OrderStatusUpdateSerializer(serializers.ModelSerializer):
-    """Serializer for updating order status"""
-    
     class Meta:
         model = CustomerOrder
         fields = ['status', 'notes']
     
     def validate_status(self, value):
-        """Validate status transitions"""
         if self.instance:
             current_status = self.instance.status
             valid_transitions = {
@@ -576,8 +515,8 @@ class OrderStatusUpdateSerializer(serializers.ModelSerializer):
                 'confirmed': ['preparing', 'cancelled'],
                 'preparing': ['ready', 'cancelled'],
                 'ready': ['completed'],
-                'completed': [],  # Final state
-                'cancelled': []    # Final state
+                'completed': [],
+                'cancelled': []
             }
             
             if value not in valid_transitions.get(current_status, []):
@@ -589,7 +528,6 @@ class OrderStatusUpdateSerializer(serializers.ModelSerializer):
 
 
 class StockBatchSerializer(serializers.ModelSerializer):
-    """Serializer for stock batches"""
     raw_material_name = serializers.CharField(source='raw_material.name', read_only=True)
     days_until_expiry = serializers.IntegerField(read_only=True)
     is_expiring_soon = serializers.BooleanField(read_only=True)
@@ -601,7 +539,6 @@ class StockBatchSerializer(serializers.ModelSerializer):
 
 
 class StockAlertSerializer(serializers.ModelSerializer):
-    """Serializer for stock alerts"""
     raw_material_name = serializers.CharField(source='raw_material.name', read_only=True)
     raw_material_unit = serializers.CharField(source='raw_material.unit', read_only=True)
     alert_type_display = serializers.CharField(source='get_alert_type_display', read_only=True)
@@ -617,3 +554,16 @@ class BranchSerializer(serializers.ModelSerializer):
     class Meta:
         model = Branch
         fields = ["id", "name"]
+
+class MenuItemBranchAvailabilitySerializer(serializers.ModelSerializer):
+    menu_item = serializers.PrimaryKeyRelatedField(queryset=MenuItem.objects.all())
+    branch = serializers.PrimaryKeyRelatedField(queryset=Branch.objects.all())
+
+    class Meta:
+        model = MenuItemBranchAvailability
+        fields = [
+            "id", "menu_item", "branch",
+            "valid_from", "valid_until",
+            "available_from", "available_to",
+            "is_active",
+        ]

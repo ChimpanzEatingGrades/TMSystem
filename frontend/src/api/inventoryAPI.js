@@ -12,6 +12,11 @@ export const createMenuItem = (data) => api.post("/inventory/menu-items/", data)
 export const updateMenuItem = (id, data) => api.put(`/inventory/menu-items/${id}/`, data);
 export const deleteMenuItem = (id) => api.delete(`/inventory/menu-items/${id}/`);
 
+// Menu Item Branch Availability
+export const createMenuItemBranchAvailability = (data) => api.post("/inventory/menuitem-branch-availability/", data);
+export const updateMenuItemBranchAvailability = (id, data) => api.put(`/inventory/menuitem-branch-availability/${id}/`, data);
+export const deleteMenuItemBranchAvailability = (id) => api.delete(`/inventory/menuitem-branch-availability/${id}/`);
+
 // Recipes
 export const getRecipes = () => api.get("/inventory/recipes/");
 export const createRecipe = (data) => api.post("/inventory/recipes/", data);

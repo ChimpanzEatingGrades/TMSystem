@@ -1,19 +1,21 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Search, Filter, ShoppingCart, Plus, Minus } from "lucide-react"
-import { getMenuItems, getCategories } from "../api/inventoryAPI"
+import { Search, Filter, ShoppingCart, Plus, Minus, MapPin, Utensils } from "lucide-react"
+import { getMenuItems, getCategories, getBranches } from "../api/inventoryAPI"
 import Navbar from "../components/Navbar"
 
 export default function CustomerMenuPage() {
   const [menuItems, setMenuItems] = useState([])
   const [categories, setCategories] = useState([])
+  const [branches, setBranches] = useState([])
   const [selectedCategory, setSelectedCategory] = useState("all")
+  const [selectedBranch, setSelectedBranch] = useState("") // must pick one
   const [searchTerm, setSearchTerm] = useState("")
   const [filteredItems, setFilteredItems] = useState([])
-  const [quantities, setQuantities] = useState({}) // track quantity per itemId
+  const [quantities, setQuantities] = useState({})
 
-  // Load order (name, requests, cart) from localStorage
+  // Load order from localStorage (includes branch)
   const [order, setOrder] = useState(() => {
     const stored = localStorage.getItem("customer_order")
     return stored
@@ -22,67 +24,90 @@ export default function CustomerMenuPage() {
           name: "",
           requests: "",
           cart: [],
+          branch: "",
         }
   })
 
   const { cart } = order
 
-  // Persist order to localStorage whenever it changes
+  // Persist to localStorage
   useEffect(() => {
     localStorage.setItem("customer_order", JSON.stringify(order))
   }, [order])
 
-  // Load menu items + categories
+  // Initial data
   useEffect(() => {
     loadData()
   }, [])
 
+  // Filtering when state changes
   useEffect(() => {
-    filterItems()
-  }, [menuItems, selectedCategory, searchTerm])
+    if (selectedBranch) filterItems()
+  }, [menuItems, selectedCategory, selectedBranch, searchTerm])
 
   const loadData = async () => {
     try {
-      const [itemsRes, catsRes] = await Promise.all([getMenuItems(), getCategories()])
+      const [itemsRes, catsRes, branchesRes] = await Promise.all([
+        getMenuItems(),
+        getCategories(),
+        getBranches(),
+      ])
+
       const items = itemsRes.data?.results || itemsRes.data || []
       const cats = catsRes.data?.results || catsRes.data || []
+      const brs = branchesRes.data?.results || branchesRes.data || []
+
       setMenuItems(Array.isArray(items) ? items : [])
       setCategories(Array.isArray(cats) ? cats : [])
+      setBranches(Array.isArray(brs) ? brs : [])
 
-      // initialize quantities
-      const initialQuantities = {}
+      // Init quantity defaults
+      const q = {}
       items.forEach((item) => {
-        initialQuantities[item.id] = 1
+        q[item.id] = 1
       })
-      setQuantities(initialQuantities)
+      setQuantities(q)
     } catch (err) {
-      console.error("Failed to load menu data:", err)
+      console.error("Failed to load data:", err)
     }
   }
 
-  const isAvailable = (item) => {
+  // Check if item is available for selected branch
+  const isAvailableForBranch = (item) => {
     const now = new Date()
     const currentTime = now.toTimeString().slice(0, 5)
     const currentDate = now.toISOString().split("T")[0]
 
+    if (!item.branch_availability || item.branch_availability.length === 0)
+      return false
+
+    const avail = item.branch_availability.find(
+      (a) => String(a.branch) === String(selectedBranch)
+    )
+    if (!avail) return false
+
     const inDate =
-      (!item.valid_from || currentDate >= item.valid_from) &&
-      (!item.valid_until || currentDate <= item.valid_until)
-
+      (!avail.valid_from || currentDate >= avail.valid_from) &&
+      (!avail.valid_until || currentDate <= avail.valid_until)
     const inTime =
-      (!item.available_from || currentTime >= item.available_from) &&
-      (!item.available_to || currentTime <= item.available_to)
+      (!avail.available_from || currentTime >= avail.available_from) &&
+      (!avail.available_to || currentTime <= avail.available_to)
 
-    // Also require stock availability if provided by API
-    const inStock = typeof item.is_in_stock === 'boolean' ? item.is_in_stock : true
-    return item.is_active && inDate && inTime && inStock
+    return avail.is_active && inDate && inTime
   }
 
   const filterItems = () => {
-    let filtered = [...menuItems].filter((item) => isAvailable(item))
+    let filtered = [...menuItems]
+
+    if (selectedBranch) {
+      filtered = filtered.filter((item) => isAvailableForBranch(item))
+    }
 
     if (selectedCategory !== "all") {
-      filtered = filtered.filter((i) => i.category?.id === Number(selectedCategory))
+      filtered = filtered.filter((i) => {
+        const catId = i.category?.id ?? i.category
+        return String(catId) === String(selectedCategory)
+      })
     }
 
     if (searchTerm) {
@@ -133,8 +158,52 @@ export default function CustomerMenuPage() {
           },
         ]
       }
-      return { ...prev, cart: updatedCart }
+      return { ...prev, cart: updatedCart, branch: selectedBranch }
     })
+  }
+
+  // Handle branch change (resets cart)
+  const handleBranchChange = (branchId) => {
+    if (branchId !== order.branch && cart.length > 0) {
+      if (!window.confirm("Changing branch will clear your cart. Continue?")) return
+    }
+    setSelectedBranch(branchId)
+    setOrder((prev) => ({
+      ...prev,
+      cart: [],
+      branch: branchId,
+    }))
+  }
+
+  // Empty state (before picking branch)
+  if (!selectedBranch) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <Navbar />
+        <div className="flex-1 flex flex-col items-center justify-center text-center px-4">
+          <MapPin size={64} className="text-yellow-400 mb-4" />
+          <h2 className="text-2xl font-semibold text-gray-800 mb-2">
+            Pick a branch to start browsing
+          </h2>
+          <p className="text-gray-500 mb-6">
+            Choose your nearest branch to see available menu items.
+          </p>
+
+          <select
+            value={selectedBranch}
+            onChange={(e) => handleBranchChange(e.target.value)}
+            className="w-full max-w-xs px-4 py-3 border rounded-lg text-gray-700 focus:ring-2 focus:ring-yellow-400"
+          >
+            <option value="">Select Branch</option>
+            {branches.map((branch) => (
+              <option key={branch.id} value={String(branch.id)}>
+                {branch.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -143,8 +212,16 @@ export default function CustomerMenuPage() {
 
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-black">Our Menu</h1>
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-black">Our Menu</h1>
+            <p className="text-gray-600">
+              Showing items available at{" "}
+              <span className="font-semibold text-yellow-600">
+                {branches.find((b) => String(b.id) === String(selectedBranch))?.name}
+              </span>
+            </p>
+          </div>
           <button className="relative p-2 bg-yellow-400 rounded-full hover:bg-yellow-500">
             <ShoppingCart className="text-black" size={24} />
             {cart.length > 0 && (
@@ -157,6 +234,7 @@ export default function CustomerMenuPage() {
 
         {/* Filters */}
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
             <input
@@ -167,17 +245,36 @@ export default function CustomerMenuPage() {
               className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-yellow-400"
             />
           </div>
+
+          {/* Category Filter */}
           <div className="relative">
             <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-yellow-400"
+              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-yellow-400 bg-white"
             >
               <option value="all">All Categories</option>
               {categories.map((cat) => (
-                <option key={cat.id} value={cat.id}>
+                <option key={cat.id} value={String(cat.id)}>
                   {cat.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Branch Selector */}
+          <div className="relative">
+            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+            <select
+              value={selectedBranch}
+              onChange={(e) => handleBranchChange(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-yellow-400 bg-white"
+            >
+              <option value="">Pick a branch</option>
+              {branches.map((branch) => (
+                <option key={branch.id} value={String(branch.id)}>
+                  {branch.name}
                 </option>
               ))}
             </select>
@@ -186,11 +283,22 @@ export default function CustomerMenuPage() {
 
         {/* Menu Items */}
         {filteredItems.length === 0 ? (
-          <div className="text-center text-gray-500">No available menu items.</div>
+          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center shadow-sm">
+            <Utensils size={48} className="mx-auto text-gray-300 mb-4" />
+            <h3 className="text-xl font-semibold text-gray-700 mb-2">
+              No available items right now
+            </h3>
+            <p className="text-gray-500">
+              Please check again later or pick another branch.
+            </p>
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredItems.map((item) => (
-              <div key={item.id} className="bg-white rounded-xl border shadow-sm p-4 flex flex-col">
+              <div
+                key={item.id}
+                className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition p-4 flex flex-col"
+              >
                 {item.picture && (
                   <img
                     src={item.picture}
@@ -198,36 +306,32 @@ export default function CustomerMenuPage() {
                     className="w-full h-40 object-cover rounded-lg mb-3"
                   />
                 )}
-                <h2 className="text-xl font-semibold">{item.name}</h2>
+                <h2 className="text-xl font-semibold mb-1">{item.name}</h2>
                 <p className="text-gray-600 text-sm flex-1">{item.description}</p>
                 <div className="mt-2 font-bold text-lg text-yellow-600">₱{item.price}</div>
-                {!item.is_in_stock && (
-                  <div className="mt-1 text-sm text-red-600 font-medium">Not available (low stock)</div>
-                )}
 
                 {/* Quantity + Add */}
                 <div className="flex items-center gap-3 mt-4">
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => changeQuantity(item.id, -1)}
-                      className="p-2 bg-gray-200 rounded-full"
+                      className="p-2 bg-gray-200 rounded-full hover:bg-gray-300"
                     >
                       <Minus size={16} />
                     </button>
                     <span className="px-2">{quantities[item.id] || 1}</span>
                     <button
                       onClick={() => changeQuantity(item.id, 1)}
-                      className="p-2 bg-gray-200 rounded-full"
+                      className="p-2 bg-gray-200 rounded-full hover:bg-gray-300"
                     >
                       <Plus size={16} />
                     </button>
                   </div>
                   <button
                     onClick={() => addToCart(item)}
-                    disabled={item.is_in_stock === false}
-                    className={`flex-1 text-black font-semibold py-2 rounded-lg ${item.is_in_stock === false ? 'bg-gray-300 cursor-not-allowed' : 'bg-yellow-400 hover:bg-yellow-500'}`}
+                    className="flex-1 text-black font-semibold py-2 rounded-lg bg-yellow-400 hover:bg-yellow-500"
                   >
-                    {item.is_in_stock === false ? 'Unavailable' : 'Add to Cart'}
+                    Add to Cart
                   </button>
                 </div>
               </div>

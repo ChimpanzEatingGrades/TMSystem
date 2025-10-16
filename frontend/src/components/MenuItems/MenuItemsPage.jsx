@@ -5,15 +5,19 @@ import { Plus, Search, Filter, Grid, List, MapPin } from "lucide-react"
 import {
   getMenuItems,
   getCategories,
-  deleteMenuItem,
   getBranches,
+  deleteMenuItem,
   createBranch,
   updateBranch,
   deleteBranch,
+  createCategory,
+  updateCategory,
+  deleteCategory,
 } from "../../api/inventoryAPI"
 import MenuItemModal from "./MenuItemModal"
 import MenuItemCard from "./MenuItemCard"
 import Navbar from "../Navbar"
+import CategoryModal from "./CategoryModal"
 
 function BranchesModal({ open, onClose }) {
   const [branches, setBranches] = useState([])
@@ -164,8 +168,10 @@ function BranchesModal({ open, onClose }) {
 export default function MenuItemsPage() {
   const [menuItems, setMenuItems] = useState([])
   const [categories, setCategories] = useState([])
+  const [branches, setBranches] = useState([])
   const [filteredItems, setFilteredItems] = useState([])
   const [selectedCategory, setSelectedCategory] = useState("all")
+  const [selectedBranch, setSelectedBranch] = useState("all")
   const [searchTerm, setSearchTerm] = useState("")
   const [viewMode, setViewMode] = useState("grid")
   const [showModal, setShowModal] = useState(false)
@@ -173,6 +179,9 @@ export default function MenuItemsPage() {
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState("all")
   const [showBranchesModal, setShowBranchesModal] = useState(false)
+  const [showCategoryModal, setShowCategoryModal] = useState(false)
+  const [editingCategory, setEditingCategory] = useState(null)
+  const [categoryError, setCategoryError] = useState("")
 
   useEffect(() => {
     loadData()
@@ -180,18 +189,22 @@ export default function MenuItemsPage() {
 
   useEffect(() => {
     filterItems()
-  }, [menuItems, selectedCategory, searchTerm, statusFilter])
+  }, [menuItems, selectedCategory, selectedBranch, searchTerm, statusFilter])
 
   const loadData = async () => {
     try {
       setLoading(true)
-      const [itemsRes, categoriesRes] = await Promise.all([getMenuItems(), getCategories()])
-
+      const [itemsRes, categoriesRes, branchesRes] = await Promise.all([
+        getMenuItems(),
+        getCategories(),
+        getBranches(),
+      ])
       const items = itemsRes.data?.results || itemsRes.data || []
       const cats = categoriesRes.data?.results || categoriesRes.data || []
-
+      const brs = branchesRes.data?.results || branchesRes.data || []
       setMenuItems(Array.isArray(items) ? items : [])
       setCategories(Array.isArray(cats) ? cats : [])
+      setBranches(Array.isArray(brs) ? brs : [])
     } catch (error) {
       console.error("Failed to load data:", error)
     } finally {
@@ -204,7 +217,20 @@ export default function MenuItemsPage() {
 
     // Category filter
     if (selectedCategory !== "all") {
-      filtered = filtered.filter((item) => item.category?.id === Number.parseInt(selectedCategory))
+      filtered = filtered.filter((item) => {
+        const catId = item.category?.id ?? item.category_id ?? item.category
+        return String(catId) === String(selectedCategory)
+      })
+    }
+
+    // Branch filter
+    if (selectedBranch !== "all") {
+      filtered = filtered.filter((item) => {
+        // Show item if it has any branch_availability for this branch
+        return (item.branch_availability || []).some(
+          (a) => String(a.branch) === String(selectedBranch)
+        )
+      })
     }
 
     // Search filter
@@ -212,26 +238,32 @@ export default function MenuItemsPage() {
       filtered = filtered.filter(
         (item) =>
           item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          item.description?.toLowerCase().includes(searchTerm.toLowerCase()),
+          item.description?.toLowerCase().includes(searchTerm.toLowerCase())
       )
     }
 
-    // Status filter
+    // Status filter (per selected branch if filtered, else first branch)
     if (statusFilter !== "all") {
       filtered = filtered.filter((item) => {
         const now = new Date()
         const currentTime = now.toTimeString().slice(0, 5)
         const currentDate = now.toISOString().split("T")[0]
-
-        const isActive = item.is_active
+        let availabilities = item.branch_availability || []
+        if (selectedBranch !== "all") {
+          availabilities = availabilities.filter(
+            (a) => String(a.branch) === String(selectedBranch)
+          )
+        }
+        const availability = availabilities[0]
+        if (!availability) return statusFilter === "unavailable"
+        const isActive = availability.is_active
         const isInDateRange =
-          (!item.valid_from || currentDate >= item.valid_from) && (!item.valid_until || currentDate <= item.valid_until)
+          (!availability.valid_from || currentDate >= availability.valid_from) &&
+          (!availability.valid_until || currentDate <= availability.valid_until)
         const isInTimeRange =
-          (!item.available_from || currentTime >= item.available_from) &&
-          (!item.available_to || currentTime <= item.available_to)
-
+          (!availability.available_from || currentTime >= availability.available_from) &&
+          (!availability.available_to || currentTime <= availability.available_to)
         const isAvailable = isActive && isInDateRange && isInTimeRange
-
         return statusFilter === "available" ? isAvailable : !isAvailable
       })
     }
@@ -257,23 +289,67 @@ export default function MenuItemsPage() {
     await loadData()
   }
 
+  // Show status for the selected branch (or first branch if not filtered)
   const getItemStatus = (item) => {
     const now = new Date()
     const currentTime = now.toTimeString().slice(0, 5)
     const currentDate = now.toISOString().split("T")[0]
-
-    const isActive = item.is_active
+    let availabilities = item.branch_availability || []
+    if (selectedBranch !== "all") {
+      availabilities = availabilities.filter(
+        (a) => String(a.branch) === String(selectedBranch)
+      )
+    }
+    const availability = availabilities[0]
+    if (!availability) {
+      return {
+        isActive: false,
+        isInDateRange: false,
+        isInTimeRange: false,
+        isAvailable: false,
+        branchAvailability: null,
+      }
+    }
+    const isActive = availability.is_active
     const isInDateRange =
-      (!item.valid_from || currentDate >= item.valid_from) && (!item.valid_until || currentDate <= item.valid_until)
+      (!availability.valid_from || currentDate >= availability.valid_from) &&
+      (!availability.valid_until || currentDate <= availability.valid_until)
     const isInTimeRange =
-      (!item.available_from || currentTime >= item.available_from) &&
-      (!item.available_to || currentTime <= item.available_to)
-
+      (!availability.available_from || currentTime >= availability.available_from) &&
+      (!availability.available_to || currentTime <= availability.available_to)
     return {
       isActive,
       isInDateRange,
       isInTimeRange,
       isAvailable: isActive && isInDateRange && isInTimeRange,
+      branchAvailability: availability,
+    }
+  }
+
+  // CATEGORY CRUD HANDLERS
+  const handleCategorySave = async (cat) => {
+    if (editingCategory) {
+      await updateCategory(editingCategory.id, cat)
+    } else {
+      await createCategory(cat)
+    }
+    setEditingCategory(null)
+    setShowCategoryModal(false)
+    await loadData()
+  }
+
+  const handleCategoryEdit = (cat) => {
+    setEditingCategory(cat)
+    setShowCategoryModal(true)
+  }
+
+  const handleCategoryDelete = async (cat) => {
+    if (!window.confirm("Delete this category?")) return
+    try {
+      await deleteCategory(cat.id)
+      await loadData()
+    } catch (err) {
+      setCategoryError("Failed to delete category")
     }
   }
 
@@ -297,7 +373,7 @@ export default function MenuItemsPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold text-black mb-2">Menu Items</h1>
-            <p className="text-gray-600">Manage your restaurant menu items and categories</p>
+            <p className="text-gray-600">Manage your restaurant menu items, categories, and branch availability</p>
           </div>
           <div className="flex gap-2">
             <button
@@ -319,9 +395,32 @@ export default function MenuItemsPage() {
           </div>
         </div>
 
+        {/* Category Management */}
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="font-semibold">Categories:</span>
+            <button
+              onClick={() => { setEditingCategory(null); setShowCategoryModal(true) }}
+              className="bg-[#FFC601] hover:bg-yellow-500 text-black font-semibold px-3 py-1 rounded"
+            >
+              + Add Category
+            </button>
+          </div>
+          {categoryError && <div className="text-red-600 mb-2">{categoryError}</div>}
+          <div className="flex flex-wrap gap-2">
+            {categories.map(cat => (
+              <div key={cat.id} className="flex items-center gap-1 bg-gray-100 px-3 py-1 rounded">
+                <span>{cat.name}</span>
+                <button onClick={() => handleCategoryEdit(cat)} className="text-blue-600 hover:underline text-xs">Edit</button>
+                <button onClick={() => handleCategoryDelete(cat)} className="text-red-600 hover:underline text-xs">Delete</button>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* Filters and Search */}
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8 shadow-sm">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             {/* Search */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
@@ -344,8 +443,25 @@ export default function MenuItemsPage() {
               >
                 <option value="all">All Categories</option>
                 {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
+                  <option key={category.id} value={String(category.id)}>
                     {category.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Branch Filter */}
+            <div className="relative">
+              <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+              <select
+                value={selectedBranch}
+                onChange={(e) => setSelectedBranch(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFC601] focus:border-transparent appearance-none bg-white"
+              >
+                <option value="all">All Branches</option>
+                {branches.map((branch) => (
+                  <option key={branch.id} value={String(branch.id)}>
+                    {branch.name}
                   </option>
                 ))}
               </select>
@@ -398,7 +514,7 @@ export default function MenuItemsPage() {
             <div className="text-2xl font-bold text-green-600">
               {filteredItems.filter((item) => getItemStatus(item).isAvailable).length}
             </div>
-            <div className="text-gray-600 text-sm">Available Now</div>
+            <div className="text-gray-600 text-sm">Available Now{selectedBranch !== "all" && ` (${branches.find(b => String(b.id) === String(selectedBranch))?.name || ""})`}</div>
           </div>
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <div className="text-2xl font-bold text-[#DD7373]">
@@ -420,7 +536,7 @@ export default function MenuItemsPage() {
             </div>
             <h3 className="text-xl font-semibold text-gray-600 mb-2">No menu items found</h3>
             <p className="text-gray-500 mb-6">
-              {searchTerm || selectedCategory !== "all" || statusFilter !== "all"
+              {searchTerm || selectedCategory !== "all" || selectedBranch !== "all" || statusFilter !== "all"
                 ? "Try adjusting your filters or search terms"
                 : "Get started by adding your first menu item"}
             </p>
@@ -448,6 +564,7 @@ export default function MenuItemsPage() {
                   setShowModal(true)
                 }}
                 onDelete={handleDelete}
+                // Optionally pass selectedBranch for further customization
               />
             ))}
           </div>
@@ -457,6 +574,13 @@ export default function MenuItemsPage() {
       {/* Modals */}
       {showModal && <MenuItemModal onClose={() => setShowModal(false)} onSave={handleSave} editingItem={editingItem} />}
       {showBranchesModal && <BranchesModal open={showBranchesModal} onClose={() => setShowBranchesModal(false)} />}
+      {showCategoryModal && (
+        <CategoryModal
+          onClose={() => { setShowCategoryModal(false); setEditingCategory(null) }}
+          onSave={handleCategorySave}
+          editingCategory={editingCategory}
+        />
+      )}
     </div>
   )
 }

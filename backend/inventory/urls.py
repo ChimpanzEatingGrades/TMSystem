@@ -11,7 +11,8 @@ from .views import (
     StockOutViewSet, 
     CustomerOrderViewSet,
     StockAlertViewSet,
-    BranchViewSet
+    BranchViewSet,
+    MenuItemBranchAvailabilityViewSet
 )
 from django.conf import settings
 from django.conf.urls.static import static
@@ -28,10 +29,7 @@ router.register(r'stock-out', StockOutViewSet, basename='stock-out')
 router.register(r'customer-orders', CustomerOrderViewSet, basename='customer-order')
 router.register(r'stock-alerts', StockAlertViewSet, basename='stock-alert')
 router.register(r'branches', BranchViewSet, basename='branch')
+router.register(r'menuitem-branch-availability', MenuItemBranchAvailabilityViewSet, basename='menuitem-branch-availability')
 
-urlpatterns = [
-    path("", include(router.urls)),
-]  
-
-# if settings.DEBUG:
-#     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+urlpatterns = router.urls
+# ...add other urlpatterns as needed...

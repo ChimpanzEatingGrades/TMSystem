@@ -3,6 +3,7 @@
 import { Edit, Trash2, Clock, Calendar, CheckCircle, XCircle, Eye } from "lucide-react"
 
 export default function MenuItemCard({ item, viewMode, status, onEdit, onDelete }) {
+  const branchAvail = item.branch_availability && item.branch_availability[0]
   const { isActive, isInDateRange, isInTimeRange, isAvailable } = status
 
   const StatusBadge = ({ isAvailable, isActive, isInDateRange, isInTimeRange }) => {
@@ -81,14 +82,14 @@ export default function MenuItemCard({ item, viewMode, status, onEdit, onDelete 
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <StatusBadge {...status} />
-                {item.valid_from && (
+                {branchAvail?.valid_from && (
                   <span className="text-xs text-gray-500">
-                    Valid from {new Date(item.valid_from).toLocaleDateString()}
+                    Valid from {new Date(branchAvail.valid_from).toLocaleDateString()}
                   </span>
                 )}
-                {item.available_from && item.available_to && (
+                {branchAvail?.available_from && branchAvail?.available_to && (
                   <span className="text-xs text-gray-500">
-                    {item.available_from} - {item.available_to}
+                    {branchAvail.available_from} - {branchAvail.available_to}
                   </span>
                 )}
               </div>
@@ -149,22 +150,22 @@ export default function MenuItemCard({ item, viewMode, status, onEdit, onDelete 
           <StatusBadge {...status} />
 
           <div className="flex flex-wrap gap-2 text-xs text-gray-500">
-            {item.valid_from && (
+            {branchAvail?.valid_from && (
               <span className="flex items-center gap-1">
                 <Calendar size={12} />
-                From {new Date(item.valid_from).toLocaleDateString()}
+                From {new Date(branchAvail.valid_from).toLocaleDateString()}
               </span>
             )}
-            {item.valid_until && (
+            {branchAvail?.valid_until && (
               <span className="flex items-center gap-1">
                 <Calendar size={12} />
-                Until {new Date(item.valid_until).toLocaleDateString()}
+                Until {new Date(branchAvail.valid_until).toLocaleDateString()}
               </span>
             )}
-            {item.available_from && item.available_to && (
+            {branchAvail?.available_from && branchAvail?.available_to && (
               <span className="flex items-center gap-1">
                 <Clock size={12} />
-                {item.available_from} - {item.available_to}
+                {branchAvail.available_from} - {branchAvail.available_to}
               </span>
             )}
           </div>
