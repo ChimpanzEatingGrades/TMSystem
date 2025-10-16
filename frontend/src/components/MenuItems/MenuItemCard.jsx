@@ -2,10 +2,11 @@
 
 import { Edit, Trash2, Clock, Calendar, CheckCircle, XCircle, Eye } from "lucide-react"
 
-export default function MenuItemCard({ item, viewMode, status, onEdit, onDelete }) {
-  const branchAvail = item.branch_availability && item.branch_availability[0]
+export default function MenuItemCard({ item, viewMode, status, onEdit, onDelete, selectedBranch }) {
+  const branchAvail = status.branchAvailability;
   const { isActive, isInDateRange, isInTimeRange, isAvailable } = status
 
+  const isBranchSelected = selectedBranch !== "all";
   const StatusBadge = ({ isAvailable, isActive, isInDateRange, isInTimeRange }) => {
     if (isAvailable) {
       return (
@@ -74,23 +75,31 @@ export default function MenuItemCard({ item, viewMode, status, onEdit, onDelete 
                 <p className="text-sm text-gray-600 truncate">{item.description}</p>
               </div>
               <div className="text-right ml-4">
-                <div className="text-lg font-bold text-secondary">₱{item.price}</div>
+                {isBranchSelected ? (
+                  <div className="text-lg font-bold text-secondary">₱{branchAvail?.price ?? 'N/A'}</div>
+                ) : (
+                  <div className="text-sm font-normal text-gray-400 italic">Select branch</div>
+                )}
                 <div className="text-xs text-gray-500">{item.category?.name}</div>
               </div>
             </div>
 
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <StatusBadge {...status} />
-                {branchAvail?.valid_from && (
-                  <span className="text-xs text-gray-500">
-                    Valid from {new Date(branchAvail.valid_from).toLocaleDateString()}
-                  </span>
-                )}
-                {branchAvail?.available_from && branchAvail?.available_to && (
-                  <span className="text-xs text-gray-500">
-                    {branchAvail.available_from} - {branchAvail.available_to}
-                  </span>
+                {isBranchSelected && (
+                  <>
+                    <StatusBadge {...status} />
+                    {branchAvail?.valid_from && (
+                      <span className="text-xs text-gray-500">
+                        Valid from {new Date(branchAvail.valid_from).toLocaleDateString()}
+                      </span>
+                    )}
+                    {branchAvail?.available_from && branchAvail?.available_to && (
+                      <span className="text-xs text-gray-500">
+                        {branchAvail.available_from} - {branchAvail.available_to}
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -142,34 +151,40 @@ export default function MenuItemCard({ item, viewMode, status, onEdit, onDelete 
             <p className="text-sm text-gray-600 mb-2 line-clamp-2">{item.description}</p>
             <div className="text-xs text-gray-500 mb-3">{item.category?.name}</div>
           </div>
-          <div className="text-xl font-bold text-secondary ml-4">₱{item.price}</div>
+          {isBranchSelected ? (
+            <div className="text-xl font-bold text-secondary ml-4">₱{branchAvail?.price ?? 'N/A'}</div>
+          ) : (
+            <div className="text-base font-normal text-gray-400 italic ml-4">Select branch</div>
+          )}
         </div>
 
         {/* Status and Time Info */}
-        <div className="space-y-2 mb-4">
-          <StatusBadge {...status} />
+        {isBranchSelected && (
+          <div className="space-y-2 mb-4">
+            <StatusBadge {...status} />
 
-          <div className="flex flex-wrap gap-2 text-xs text-gray-500">
-            {branchAvail?.valid_from && (
-              <span className="flex items-center gap-1">
-                <Calendar size={12} />
-                From {new Date(branchAvail.valid_from).toLocaleDateString()}
-              </span>
-            )}
-            {branchAvail?.valid_until && (
-              <span className="flex items-center gap-1">
-                <Calendar size={12} />
-                Until {new Date(branchAvail.valid_until).toLocaleDateString()}
-              </span>
-            )}
-            {branchAvail?.available_from && branchAvail?.available_to && (
-              <span className="flex items-center gap-1">
-                <Clock size={12} />
-                {branchAvail.available_from} - {branchAvail.available_to}
-              </span>
-            )}
+            <div className="flex flex-wrap gap-2 text-xs text-gray-500">
+              {branchAvail?.valid_from && (
+                <span className="flex items-center gap-1">
+                  <Calendar size={12} />
+                  From {new Date(branchAvail.valid_from).toLocaleDateString()}
+                </span>
+              )}
+              {branchAvail?.valid_until && (
+                <span className="flex items-center gap-1">
+                  <Calendar size={12} />
+                  Until {new Date(branchAvail.valid_until).toLocaleDateString()}
+                </span>
+              )}
+              {branchAvail?.available_from && branchAvail?.available_to && (
+                <span className="flex items-center gap-1">
+                  <Clock size={12} />
+                  {branchAvail.available_from} - {branchAvail.available_to}
+                </span>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Actions */}
         <div className="flex items-center gap-2 pt-4 border-t border-gray-100">

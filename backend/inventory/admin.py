@@ -30,7 +30,7 @@ class MenuCategoryAdmin(admin.ModelAdmin):
 @admin.register(MenuItem)
 class MenuItemAdmin(admin.ModelAdmin):
     list_display = (
-        "id", "name", "price", "picture", "description",
+        "id", "name", "picture", "description",
         "recipe", "recipe_id", "category",
         "created_at", "updated_at",
     )
@@ -81,6 +81,6 @@ class BranchAdmin(admin.ModelAdmin):
 
 @admin.register(MenuItemBranchAvailability)
 class MenuItemBranchAvailabilityAdmin(admin.ModelAdmin):
-    list_display = ("menu_item", "branch", "valid_from", "valid_until", "available_from", "available_to", "is_active")
+    list_display = ("menu_item", "branch", "price", "valid_from", "valid_until", "available_from", "available_to", "is_active")
     list_filter = ("branch", "is_active")
     search_fields = ("menu_item__name", "branch__name")

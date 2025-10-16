@@ -27,37 +27,19 @@ import {
   createCustomerOrder
 } from "../../api/orders";
 import { getMenuItems } from "../../api/menu";
-import api from "../../api";
+import api from "../../api"; // Keep for branches fetch
 
-const OrderManagement = ({ 
-  externalShowCreateModal, 
-  externalSetShowCreateModal,
-  scannedCartOrder,
-  clearScannedCartOrder 
-}) => {
+const OrderManagement = () => {
   const [orders, setOrders] = useState([]);
   const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [menuItems, setMenuItems] = useState([]);
-  const [branches, setBranches] = useState([]);
   const [filters, setFilters] = useState({
     status: '',
     customer_name: '',
     date_from: '',
     date_to: '',
-    branch_id: ''
-  });
-
-  // Create order form state
-  const [newOrder, setNewOrder] = useState({
-    customer_name: '',
-    special_requests: '',
-    notes: '',
-    branch: '',
-    items: []
   });
 
   const statusConfig = {
@@ -96,43 +78,7 @@ const OrderManagement = ({
   useEffect(() => {
     fetchOrders();
     fetchStats();
-    fetchMenuItems();
-    fetchBranches();
   }, [filters]);
-
-  // Sync external modal state with internal state
-  useEffect(() => {
-    if (externalShowCreateModal !== undefined) {
-      setShowCreateModal(externalShowCreateModal);
-    }
-  }, [externalShowCreateModal]);
-
-  // Populate form with scanned cart data
-  useEffect(() => {
-    if (scannedCartOrder && showCreateModal) {
-      setNewOrder({
-        customer_name: scannedCartOrder.customer_name || '',
-        special_requests: scannedCartOrder.special_requests || '',
-        notes: 'Order from cart QR scan',
-        items: scannedCartOrder.items.map(item => ({
-          menu_item: item.menu_item.toString(),
-          quantity: item.quantity,
-          special_instructions: item.special_instructions || ''
-        }))
-      });
-    }
-  }, [scannedCartOrder, showCreateModal]);
-
-  // Update external state when internal state changes
-  const handleSetShowCreateModal = (value) => {
-    setShowCreateModal(value);
-    if (externalSetShowCreateModal) {
-      externalSetShowCreateModal(value);
-    }
-    if (!value && clearScannedCartOrder) {
-      clearScannedCartOrder();
-    }
-  };
 
   const fetchOrders = async () => {
     try {
@@ -152,35 +98,6 @@ const OrderManagement = ({
       setStats(response.data);
     } catch (error) {
       console.error('Error fetching stats:', error);
-    }
-  };
-
-  const fetchMenuItems = async () => {
-    try {
-      const response = await getMenuItems();
-      setMenuItems(response.data.filter(item => item.is_active));
-    } catch (error) {
-      console.error('Error fetching menu items:', error);
-    }
-  };
-
-  const fetchBranches = async () => {
-    try {
-      const response = await api.get('/inventory/branches/');
-      setBranches(response.data);
-    } catch (error) {
-      console.error('Error fetching branches:', error);
-    }
-  };
-
-  const testAPI = async () => {
-    try {
-      const response = await testOrdersAPI();
-      console.log('API Test Response:', response.data);
-      alert(`API Test Successful: ${response.data.message}`);
-    } catch (error) {
-      console.error('API Test Error:', error);
-      alert(`API Test Failed: ${error.message}`);
     }
   };
 
@@ -218,80 +135,6 @@ const OrderManagement = ({
       console.error('Error updating order status:', error);
       alert('Failed to update order status');
     }
-  };
-
-  const handleCreateOrder = async () => {
-    try {
-      // Validate form
-      if (!newOrder.customer_name.trim()) {
-        alert('Please enter customer name');
-        return;
-      }
-      
-      if (newOrder.items.length === 0) {
-        alert('Please add at least one item');
-        return;
-      }
-
-      const response = await createCustomerOrder(newOrder);
-      
-      // Add the new order to the list
-      setOrders([response.data, ...orders]);
-      
-      // Reset form and close modal
-      resetCreateForm();
-      setShowCreateModal(false);
-      
-      // Refresh stats
-      fetchStats();
-      
-      alert('Order created successfully!');
-    } catch (error) {
-      console.error('Error creating order:', error);
-      alert(error.response?.data?.error || 'Failed to create order');
-    }
-  };
-
-  const resetCreateForm = () => {
-    setNewOrder({
-      customer_name: '',
-      special_requests: '',
-      notes: '',
-      items: []
-    });
-  };
-
-  const addOrderItem = () => {
-    setNewOrder(prev => ({
-      ...prev,
-      items: [...prev.items, { menu_item: '', quantity: 1, special_instructions: '' }]
-    }));
-  };
-
-  const removeOrderItem = (index) => {
-    setNewOrder(prev => ({
-      ...prev,
-      items: prev.items.filter((_, i) => i !== index)
-    }));
-  };
-
-  const updateOrderItem = (index, field, value) => {
-    setNewOrder(prev => ({
-      ...prev,
-      items: prev.items.map((item, i) => 
-        i === index ? { ...item, [field]: value } : item
-      )
-    }));
-  };
-
-  const calculateOrderTotal = () => {
-    const subtotal = newOrder.items.reduce((sum, item) => {
-      const menuItem = menuItems.find(m => m.id === parseInt(item.menu_item));
-      return sum + (menuItem ? menuItem.price * item.quantity : 0);
-    }, 0);
-    
-    const tax = 0;
-    return { subtotal, tax, total: subtotal + tax };
   };
 
   const getStatusActions = (status) => {
@@ -370,21 +213,6 @@ const OrderManagement = ({
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Order Management</h1>
               <p className="text-gray-600">Manage customer orders and track their status</p>
             </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => handleSetShowCreateModal(true)}
-                className="px-6 py-3 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-medium flex items-center gap-2 shadow-lg hover:shadow-xl transition-all"
-              >
-                <Plus className="h-5 w-5" />
-                Create New Order
-              </button>
-              <button
-                onClick={testAPI}
-                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium"
-              >
-                Test API
-              </button>
-            </div>
           </div>
         </div>
 
@@ -449,24 +277,6 @@ const OrderManagement = ({
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Branch
-              </label>
-              <select
-                value={filters.branch_id}
-                onChange={(e) => handleFilterChange('branch_id', e.target.value)}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-yellow-500"
-              >
-                <option value="">All Branches</option>
-                {branches.map((branch) => (
-                  <option key={branch.id} value={branch.id}>
-                    {branch.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Status
@@ -656,25 +466,6 @@ const OrderManagement = ({
         </div>
       </div>
 
-      {/* Create Order Modal */}
-      {showCreateModal && (
-        <CreateOrderModal
-          newOrder={newOrder}
-          setNewOrder={setNewOrder}
-          menuItems={menuItems}
-          branches={branches}
-          onClose={() => {
-            handleSetShowCreateModal(false);
-            resetCreateForm();
-          }}
-          onSubmit={handleCreateOrder}
-          addOrderItem={addOrderItem}
-          removeOrderItem={removeOrderItem}
-          updateOrderItem={updateOrderItem}
-          calculateOrderTotal={calculateOrderTotal}
-        />
-      )}
-
       {/* Order Details Modal */}
       {showOrderModal && selectedOrder && (
         <OrderDetailsModal
@@ -691,19 +482,93 @@ const OrderManagement = ({
 };
 
 // Create Order Modal Component
-const CreateOrderModal = ({ 
-  newOrder, 
-  setNewOrder, 
+export const CreateOrderModal = ({ 
+  initialOrderState,
   menuItems,
   branches,
   onClose, 
   onSubmit,
-  addOrderItem,
-  removeOrderItem,
-  updateOrderItem,
-  calculateOrderTotal
 }) => {
+  const [newOrder, setNewOrder] = useState(initialOrderState || {
+    customer_name: '',
+    special_requests: '',
+    notes: '',
+    branch: '',
+    items: []
+  });
+
+  const addOrderItem = () => {
+    setNewOrder(prev => ({
+      ...prev,
+      items: [...prev.items, { menu_item: '', quantity: 1, special_instructions: '' }]
+    }));
+  };
+
+  const removeOrderItem = (index) => {
+    setNewOrder(prev => ({
+      ...prev,
+      items: prev.items.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateOrderItem = (index, field, value) => {
+    setNewOrder(prev => ({
+      ...prev,
+      items: prev.items.map((item, i) => 
+        i === index ? { ...item, [field]: value } : item
+      )
+    }));
+  };
+
+  const calculateOrderTotal = () => {
+    if (!newOrder.branch) return { subtotal: 0, tax: 0, total: 0 };
+
+    const subtotal = newOrder.items.reduce((sum, currentItem) => {
+      const menuItem = menuItems.find(m => m.id === parseInt(currentItem.menu_item));
+      if (!menuItem) return sum;
+
+      const availability = menuItem.branch_availability.find(
+        a => String(a.branch) === String(newOrder.branch)
+      );
+      const price = availability ? parseFloat(availability.price) : 0;
+      return sum + (price * currentItem.quantity);
+    }, 0);
+    
+    const tax = 0;
+    return { subtotal, tax, total: subtotal + tax };
+  };
+
   const { subtotal, tax, total } = calculateOrderTotal();
+
+  const availableMenuItems = newOrder.branch
+    ? menuItems.filter(item => {
+        const availability = item.branch_availability?.find(
+          a => String(a.branch) === String(newOrder.branch)
+        );
+        return availability && availability.is_active && availability.price != null;
+      })
+    : [];
+
+  const getPriceForMenuItem = (itemId) => {
+    const item = menuItems.find(m => m.id === parseInt(itemId));
+    return item?.branch_availability?.find(a => String(a.branch) === String(newOrder.branch))?.price || 0;
+  };
+
+  const handleSubmit = async () => {
+    if (!newOrder.customer_name.trim()) {
+      alert('Please enter customer name');
+      return;
+    }
+    if (!newOrder.branch) {
+      alert('Please select a branch');
+      return;
+    }
+    if (newOrder.items.length === 0) {
+      alert('Please add at least one item');
+      return;
+    }
+    await onSubmit(newOrder);
+  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -795,8 +660,11 @@ const CreateOrderModal = ({
             
             <div className="space-y-3">
               {newOrder.items.map((item, index) => {
-                const menuItem = menuItems.find(m => m.id === parseInt(item.menu_item));
-                const itemTotal = menuItem ? menuItem.price * item.quantity : 0;
+                const unitPrice = getPriceForMenuItem(item.menu_item);
+                const itemTotal = unitPrice * item.quantity;
+                const menuItemFromList = availableMenuItems.find(
+                  (mi) => mi.id === parseInt(item.menu_item)
+                );
                 
                 return (
                   <div key={index} className="border border-gray-200 rounded-lg p-4">
@@ -811,9 +679,9 @@ const CreateOrderModal = ({
                           className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
                         >
                           <option value="">Select item...</option>
-                          {menuItems.map(menuItem => (
+                          {availableMenuItems.map(menuItem => (
                             <option key={menuItem.id} value={menuItem.id}>
-                              {menuItem.name} - ₱{menuItem.price}
+                              {menuItem.name} - ₱{getPriceForMenuItem(menuItem.id)}
                             </option>
                           ))}
                         </select>
@@ -856,8 +724,8 @@ const CreateOrderModal = ({
                       </div>
                     </div>
                     
-                    {menuItem && (
-                      <div className="mt-2 text-sm text-gray-600">
+                    {menuItemFromList && (
+                      <div className="mt-2 text-sm text-gray-600 text-right">
                         Item Total: ₱{itemTotal.toFixed(2)}
                       </div>
                     )}
@@ -867,7 +735,9 @@ const CreateOrderModal = ({
               
               {newOrder.items.length === 0 && (
                 <div className="text-center py-8 text-gray-500">
-                  No items added. Click "Add Item" to start.
+                  {newOrder.branch
+                    ? 'No items added. Click "Add Item" to start.'
+                    : 'Please select a branch to see available items.'}
                 </div>
               )}
             </div>
@@ -897,7 +767,7 @@ const CreateOrderModal = ({
               Cancel
             </button>
             <button
-              onClick={onSubmit}
+              onClick={handleSubmit}
               className="px-4 py-2 text-sm font-medium text-white bg-yellow-500 rounded-md hover:bg-yellow-600"
             >
               Create Order

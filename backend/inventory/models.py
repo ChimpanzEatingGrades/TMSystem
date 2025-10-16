@@ -189,11 +189,6 @@ class MenuCategory(models.Model):
 
 class MenuItem(models.Model):
     name = models.CharField(max_length=150)
-    price = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        validators=[MinValueValidator(Decimal("0.00"))],
-    )
     picture = models.ImageField(upload_to="menu_items/", null=True, blank=True)
 
     description = models.TextField(blank=True)
@@ -616,6 +611,12 @@ class StockBatch(models.Model):
 class MenuItemBranchAvailability(models.Model):
     menu_item = models.ForeignKey("MenuItem", on_delete=models.CASCADE, related_name="branch_availability")
     branch = models.ForeignKey("Branch", on_delete=models.CASCADE, related_name="menuitem_availability")
+    price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.00"))],
+        help_text="Price of the menu item at this specific branch."
+    )
     valid_from = models.DateField(null=True, blank=True)
     valid_until = models.DateField(null=True, blank=True)
     available_from = models.TimeField(null=True, blank=True)

@@ -144,6 +144,7 @@ class MenuCategorySerializer(serializers.ModelSerializer):
 class MenuItemBranchAvailabilitySerializer(serializers.ModelSerializer):
     menu_item = serializers.PrimaryKeyRelatedField(queryset=MenuItem.objects.all())
     branch = serializers.PrimaryKeyRelatedField(queryset=Branch.objects.all())
+    branch_name = serializers.CharField(source='branch.name', read_only=True)
 
     class Meta:
         model = MenuItemBranchAvailability
@@ -151,7 +152,7 @@ class MenuItemBranchAvailabilitySerializer(serializers.ModelSerializer):
             "id", "menu_item", "branch",
             "valid_from", "valid_until",
             "available_from", "available_to",
-            "is_active",
+            "is_active", "price", "branch_name"
         ]
 
 class MenuItemSerializer(serializers.ModelSerializer):
@@ -168,7 +169,7 @@ class MenuItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = MenuItem
         fields = [
-            "id", "name", "price", "picture", "description",
+            "id", "name", "picture", "description",
             "recipe", "recipe_id", "category", "created_at", "updated_at",
             "branch_availability"
         ]
@@ -391,8 +392,6 @@ class OrderItemSerializer(serializers.ModelSerializer):
         read_only_fields = ['total_price', 'unit_price']
 
     def validate_menu_item(self, value):
-        if not value.is_active:
-            raise serializers.ValidationError("This menu item is not available")
         return value
 
     def validate_quantity(self, value):
@@ -448,10 +447,23 @@ class CustomerOrderCreateSerializer(serializers.ModelSerializer):
         
         subtotal = Decimal('0.00')
         for item_data in items_data:
+            branch = validated_data.get('branch')
             menu_item = item_data['menu_item']
             quantity = item_data['quantity']
-            unit_price = menu_item.price
-            item_data['unit_price'] = unit_price
+
+            try:
+                availability = MenuItemBranchAvailability.objects.get(
+                    menu_item=menu_item,
+                    branch=branch,
+                    is_active=True
+                )
+                unit_price = availability.price
+                item_data['unit_price'] = unit_price
+            except MenuItemBranchAvailability.DoesNotExist:
+                raise serializers.ValidationError({
+                    'items': f"Menu item '{menu_item.name}' is not available or has no price at the selected branch."
+                })
+
             subtotal += quantity * unit_price
         
         validated_data['subtotal'] = subtotal
@@ -556,16 +568,3 @@ class BranchSerializer(serializers.ModelSerializer):
     class Meta:
         model = Branch
         fields = ["id", "name"]
-
-class MenuItemBranchAvailabilitySerializer(serializers.ModelSerializer):
-    menu_item = serializers.PrimaryKeyRelatedField(queryset=MenuItem.objects.all())
-    branch = serializers.PrimaryKeyRelatedField(queryset=Branch.objects.all())
-
-    class Meta:
-        model = MenuItemBranchAvailability
-        fields = [
-            "id", "menu_item", "branch",
-            "valid_from", "valid_until",
-            "available_from", "available_to",
-            "is_active",
-        ]

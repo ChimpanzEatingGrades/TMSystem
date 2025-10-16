@@ -170,10 +170,11 @@ export default function CustomerMenuPage() {
             description: item.description,
             picture: item.picture,
             category: item.category?.name || "",
-            unitPrice: parseFloat(item.price),
+            // Get price from the specific branch availability
+            unitPrice: parseFloat(item.branch_availability.find(a => String(a.branch) === String(selectedBranch))?.price || 0),
             quantity,
-            totalPrice: parseFloat(item.price) * quantity,
-          },
+            totalPrice: parseFloat(item.branch_availability.find(a => String(a.branch) === String(selectedBranch))?.price || 0) * quantity,
+          }
         ]
       }
 
@@ -359,8 +360,8 @@ export default function CustomerMenuPage() {
                 <p className="text-gray-600 text-sm flex-1">
                   {item.description}
                 </p>
-                <div className="mt-2 font-bold text-lg text-yellow-600">
-                  ₱{item.price}
+                <div className="mt-2 font-bold text-lg text-yellow-600"> 
+                  ₱{item.branch_availability.find(a => String(a.branch) === String(selectedBranch))?.price || 'N/A'}
                 </div>
 
                 <div className="flex items-center gap-3 mt-4">

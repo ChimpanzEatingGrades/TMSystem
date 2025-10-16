@@ -21,13 +21,17 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
   const [showRecipe, setShowRecipe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+  const [isSavingForRecipe, setIsSavingForRecipe] = useState(false);
+  const [createdMenuItemId, setCreatedMenuItemId] = useState(
+    editingItem?.id || null
+  ); // ✅ store new ID for recipe creation
 
-  // ✅ use `category` instead of `category_id`
+  // ✅ consistent form state
   const [formData, setFormData] = useState({
     name: editingItem?.name || "",
     description: editingItem?.description || "",
-    price: editingItem?.price || "",
     picture: null,
+    recipe_id: editingItem?.recipe?.id || null,
     category: editingItem?.category?.id || editingItem?.category || "",
   });
 
@@ -41,7 +45,9 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
       setBranchFields(
         branches.map((branch) => {
           const found = editingItem?.branch_availability?.find(
-            (a) => a.branch === branch.id
+            (a) =>
+              String(a.branch) === String(branch.id) ||
+              String(a.branch?.id) === String(branch.id)
           );
           return {
             branch_id: branch.id,
@@ -51,6 +57,7 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
             valid_until: found?.valid_until || "",
             available_from: found?.available_from || "00:00",
             available_to: found?.available_to || "23:59",
+            price: found?.price || "",
             is_active:
               typeof found?.is_active === "boolean" ? found.is_active : false,
           };
@@ -82,8 +89,6 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
   const validateForm = () => {
     const newErrors = {};
     if (!formData.name.trim()) newErrors.name = "Product name is required";
-    if (!formData.price || formData.price <= 0)
-      newErrors.price = "Valid price is required";
     if (!formData.category) newErrors.category = "Category is required";
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -125,28 +130,34 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
     setLoading(true);
     setErrors({});
 
-    const data = new FormData();
-    Object.entries(formData).forEach(([key, value]) => {
-      if (value !== null && value !== "") data.append(key, value);
-    });
-
     try {
-      let menuItemId = editingItem?.id;
+      const data = new FormData();
+      data.append("name", formData.name.trim());
+      if (formData.description) data.append("description", formData.description);
+      data.append("category", parseInt(formData.category));
+      if (formData.recipe_id) data.append("recipe_id", formData.recipe_id);
+      if (formData.picture) data.append("picture", formData.picture);
+
       let res;
+      let menuItemId = editingItem?.id;
+
       if (editingItem) {
         res = await updateMenuItem(editingItem.id, data);
-        menuItemId = res.data?.id || editingItem.id;
+        menuItemId = res?.data?.id || editingItem.id;
       } else {
         res = await createMenuItem(data);
-        menuItemId = res.data?.id || res.id;
+        menuItemId =
+          res?.data?.id ||
+          res?.id ||
+          (res?.data && res.data.results && res.data.results.id);
       }
 
-      menuItemId = Number(menuItemId);
-      if (!menuItemId || isNaN(menuItemId)) {
-        throw new Error("Menu item ID not found");
-      }
+      if (!menuItemId) throw new Error("Failed to retrieve menu item ID");
 
-      // ✅ Handle Branch Availabilities
+      // ✅ Save menuItemId for recipe creation
+      setCreatedMenuItemId(menuItemId);
+
+      // ✅ Handle branch availability
       for (const branch of branchFields) {
         const payload = {
           menu_item: menuItemId,
@@ -156,39 +167,74 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
           available_from: branch.available_from || null,
           available_to: branch.available_to || null,
           is_active: branch.is_active,
+          price:
+            branch.price !== "" && !isNaN(parseFloat(branch.price))
+              ? parseFloat(branch.price)
+              : null,
         };
 
+        const hasData =
+          branch.is_active ||
+          branch.valid_from ||
+          branch.valid_until ||
+          branch.available_from ||
+          branch.available_to ||
+          payload.price !== null;
+
         if (branch.id) {
-          if (
-            branch.is_active ||
-            branch.valid_from ||
-            branch.valid_until ||
-            branch.available_from ||
-            branch.available_to
-          ) {
+          if (hasData) {
             await updateMenuItemBranchAvailability(branch.id, payload);
           } else {
             await deleteMenuItemBranchAvailability(branch.id);
           }
-        } else {
-          if (
-            branch.is_active ||
-            branch.valid_from ||
-            branch.valid_until ||
-            branch.available_from ||
-            branch.available_to
-          ) {
-            await createMenuItemBranchAvailability(payload);
-          }
+        } else if (hasData) {
+          await createMenuItemBranchAvailability(payload);
         }
       }
 
       onSave();
     } catch (err) {
-      console.error("Save failed", err);
-      setErrors({ submit: "Failed to save menu item. Please try again." });
+      console.error("Save failed:", err);
+      setErrors({
+        submit:
+          "Failed to save menu item. Please check fields or backend connection.",
+      });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleOpenRecipe = async (e) => {
+    e.preventDefault();
+    // If we are editing an existing item, we already have the ID.
+    if (!createdMenuItemId) {
+      // If it's a new item, we must save it first to get an ID.
+      if (!validateForm()) {
+        alert("Please fill in the product name and category before adding a recipe.");
+        return;
+      }
+      setIsSavingForRecipe(true);
+      try {
+        const data = new FormData();
+        data.append("name", formData.name.trim());
+        data.append("category", parseInt(formData.category));
+        if (formData.description) data.append("description", formData.description);
+
+        const res = await createMenuItem(data);
+        const newId = res?.data?.id;
+
+        if (!newId) throw new Error("Failed to create a temporary menu item.");
+
+        setCreatedMenuItemId(newId);
+        setShowRecipe(true); // Open recipe modal on success
+      } catch (err) {
+        console.error("Failed to pre-save menu item:", err);
+        setErrors({ submit: "Could not save the item to add a recipe. Please try again." });
+      } finally {
+        setIsSavingForRecipe(false);
+      }
+    } else {
+      setShowRecipe(true);
     }
   };
 
@@ -220,13 +266,12 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
               </div>
             )}
 
-            {/* Basic Information */}
+            {/* Basic Info */}
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-black flex items-center gap-2">
                 <Tag size={20} />
                 Basic Information
               </h3>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -244,27 +289,6 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
                   />
                   {errors.name && (
                     <p className="text-red-500 text-xs mt-1">{errors.name}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Price (₱) *
-                  </label>
-                  <input
-                    type="number"
-                    name="price"
-                    value={formData.price}
-                    onChange={handleChange}
-                    min="0"
-                    step="0.01"
-                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-[#FFC601] ${
-                      errors.price ? "border-red-300" : "border-gray-300"
-                    }`}
-                    placeholder="0.00"
-                  />
-                  {errors.price && (
-                    <p className="text-red-500 text-xs mt-1">{errors.price}</p>
                   )}
                 </div>
               </div>
@@ -361,7 +385,7 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
                     key={branch.branch_id}
                     className="border rounded-lg p-4 mb-2"
                   >
-                    <div className="font-medium mb-2">{branch.branch_name}</div>
+                    <div className="font-medium mb-4">{branch.branch_name}</div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div>
                         <label className="block text-xs text-gray-600 mb-1">
@@ -418,7 +442,7 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4 mt-2">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
                       <div>
                         <label className="block text-xs text-gray-600 mb-1">
                           Available From (Time)
@@ -453,6 +477,26 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
                           className="w-full border border-gray-300 rounded px-2 py-1"
                         />
                       </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">
+                          Price (₱)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={branch.price}
+                          onChange={(e) =>
+                            handleBranchFieldChange(
+                              idx,
+                              "price",
+                              e.target.value
+                            )
+                          }
+                          placeholder="0.00"
+                          className="w-full border border-gray-300 rounded px-2 py-1"
+                        />
+                      </div>
                     </div>
                   </div>
                 ))
@@ -462,11 +506,16 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
             {/* Recipe Button */}
             <div className="pt-4 border-t border-gray-200">
               <button
-                type="button"
-                onClick={() => setShowRecipe(true)}
-                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 px-4 rounded-lg transition-colors duration-200"
+                type="button" // Important: type="button" to prevent form submission
+                onClick={handleOpenRecipe}
+                disabled={isSavingForRecipe}
+                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 px-4 rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {editingItem ? "Edit Recipe & Ingredients" : "Add Recipe & Ingredients"}
+                {isSavingForRecipe
+                  ? "Saving..."
+                  : editingItem
+                  ? "Edit Recipe & Ingredients"
+                  : "Add Recipe & Ingredients"}
               </button>
             </div>
           </div>
@@ -498,16 +547,16 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
         </form>
       </div>
 
-      {/* Recipe Modal */}
+      {/* ✅ Recipe Modal — now uses createdMenuItemId */}
       {showRecipe && (
         <RecipeModal
           onClose={() => setShowRecipe(false)}
           existingRecipe={editingItem?.recipe}
           onSave={(recipe) => {
-            setFormData({ ...formData, recipe_id: recipe.id })
-            setShowRecipe(false)
+            setFormData({ ...formData, recipe_id: recipe.id });
+            setShowRecipe(false);
           }}
-          menuItemId={editingItem?.id}
+          menuItemId={createdMenuItemId}
         />
       )}
     </div>

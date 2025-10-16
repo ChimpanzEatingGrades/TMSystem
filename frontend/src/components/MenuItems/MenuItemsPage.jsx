@@ -298,14 +298,15 @@ export default function MenuItemsPage() {
     if (selectedBranch !== "all") {
       availabilities = availabilities.filter(
         (a) => String(a.branch) === String(selectedBranch)
-      )
+      );
     }
-    const availability = availabilities[0]
+    // If multiple availabilities match (e.g., 'All Branches' is not selected), prefer the one for the selected branch.
+    const availability = availabilities.find(a => String(a.branch) === String(selectedBranch)) || availabilities[0];
     if (!availability) {
       return {
         isActive: false,
-        isInDateRange: false,
-        isInTimeRange: false,
+        isInDateRange: true, // Default to true to not show specific error
+        isInTimeRange: true, // Default to true to not show specific error
         isAvailable: false,
         branchAvailability: null,
       }
@@ -564,7 +565,7 @@ export default function MenuItemsPage() {
                   setShowModal(true)
                 }}
                 onDelete={handleDelete}
-                // Optionally pass selectedBranch for further customization
+                selectedBranch={selectedBranch}
               />
             ))}
           </div>
