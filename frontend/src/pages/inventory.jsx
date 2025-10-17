@@ -22,6 +22,7 @@ import StockOutModal from "../components/StockOutModal"
 import StockHistory from "../components/StockHistory"
 import ClearInventoryModal from "../components/ClearInventoryModal"
 import ErrorBoundary from "../components/ErrorBoundary"
+import ThresholdModal from "../components/Inventory/ThresholdModal"
 
 export default function Inventory() {
   // State
@@ -39,6 +40,8 @@ export default function Inventory() {
   const [showUnitModal, setShowUnitModal] = useState(false)
   const [showStockOutModal, setShowStockOutModal] = useState(false)
   const [showClearInventoryModal, setShowClearInventoryModal] = useState(false)
+  const [showThresholdModal, setShowThresholdModal] = useState(false)
+  const [selectedMaterialForThreshold, setSelectedMaterialForThreshold] = useState(null)
   
   // Edit state
   const [editingMaterial, setEditingMaterial] = useState(null)
@@ -168,6 +171,51 @@ export default function Inventory() {
     }
   }
 
+  const handleOpenThresholdModal = (material) => {
+    setSelectedMaterialForThreshold(material)
+    setShowThresholdModal(true)
+  }
+
+  const handleSaveThreshold = async (materialId, thresholdData) => {
+    try {
+      setSaving(true)
+      
+      // Get the current material data
+      const currentMaterial = materials.find(m => m.id === materialId)
+      if (!currentMaterial) {
+        throw new Error('Material not found')
+      }
+      
+      // Create a complete update payload with all required fields
+      const updatePayload = {
+        name: currentMaterial.name,
+        quantity: currentMaterial.quantity,
+        unit: currentMaterial.unit,
+        material_type: currentMaterial.material_type,
+        minimum_threshold: thresholdData.minimum_threshold,
+        reorder_level: thresholdData.reorder_level,
+      }
+      
+      // Only include shelf_life_days if it's not a supply item
+      if (currentMaterial.material_type !== 'supplies' && currentMaterial.shelf_life_days) {
+        updatePayload.shelf_life_days = currentMaterial.shelf_life_days
+      }
+      
+      console.log('Updating thresholds with payload:', updatePayload)
+      
+      const res = await api.put(`/inventory/rawmaterials/${materialId}/`, updatePayload)
+      setMaterials((prev) => prev.map((m) => (m.id === materialId ? res.data : m)))
+      setError('')
+      alert('Thresholds updated successfully!')
+    } catch (err) {
+      console.error('Error updating thresholds:', err)
+      console.error('Error response:', err.response?.data)
+      throw new Error(err.response?.data?.detail || err.response?.data?.error || 'Failed to update thresholds')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   // Success handlers
   const handlePurchaseSuccess = (newOrder) => {
     try {
@@ -222,7 +270,7 @@ export default function Inventory() {
       case "time_desc":
         return (new Date(b.created_at || 0).getTime() || b.id || 0) - (new Date(a.created_at || 0).getTime() || a.id || 0)
       case "time_asc":
-        return (new Date(a.created_at || 0).getTime() || a.id || 0) - (new Date(b.created_at || 0).getTime() || b.id || 0)
+        return (new Date(a.created_at || 0).getTime() || a.id || 0) - (new Date(b.created_at || 0).getTime() || a.id || 0)
       default:
         return 0
     }
@@ -296,28 +344,6 @@ export default function Inventory() {
             </div>
           )}
 
-          {/* Threshold Information Panel */}
-      { /*   <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
-            <h3 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
-              <AlertTriangle size={18} />
-              Stock Threshold Guide
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-blue-800">
-              <div>
-                <span className="font-medium">Minimum Threshold:</span>
-                <p className="text-xs mt-1">When stock reaches this level, you'll get a "Low Stock" alert.</p>
-              </div>
-              <div>
-                <span className="font-medium">Reorder Level:</span>
-                <p className="text-xs mt-1">When stock reaches this level, you'll get a "Reorder" alert.</p>
-              </div>
-              <div>
-                <span className="font-medium">Formula:</span>
-                <p className="text-xs mt-1">Min Threshold = (Daily Usage × Lead Time) + Buffer</p>
-              </div>
-            </div>
-          </div>*/}
-
           {/* Current Inventory */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 mb-8">
             <div className="p-6 border-b border-gray-200">
@@ -375,6 +401,18 @@ export default function Inventory() {
                     <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Quantity</th>
                     <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Unit</th>
                     <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Shelf Life</th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">
+                      <div className="flex items-center gap-1">
+                        Min Threshold
+                        <span className="text-xs text-gray-500 font-normal">(Low Stock)</span>
+                      </div>
+                    </th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">
+                      <div className="flex items-center gap-1">
+                        Reorder Level
+                        <span className="text-xs text-gray-500 font-normal">(Restock)</span>
+                      </div>
+                    </th>
                     <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Status</th>
                     <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Actions</th>
                   </tr>
@@ -536,6 +574,14 @@ export default function Inventory() {
                               Edit
                             </button>
                             <button
+                              onClick={() => handleOpenThresholdModal(mat)}
+                              className="bg-purple-50 hover:bg-purple-100 text-purple-700 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-1 border border-purple-200"
+                              title="Set thresholds"
+                            >
+                              <AlertTriangle size={12} />
+                              Threshold
+                            </button>
+                            <button
                               onClick={() => handleDeleteMaterial(mat.id)}
                               className="bg-red-50 hover:bg-red-100 text-red-700 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-1 border border-red-200"
                             >
@@ -605,6 +651,16 @@ export default function Inventory() {
             isOpen={showClearInventoryModal}
             onClose={() => setShowClearInventoryModal(false)}
             onSuccess={handleClearInventorySuccess}
+          />
+
+          <ThresholdModal
+            isOpen={showThresholdModal}
+            onClose={() => {
+              setShowThresholdModal(false)
+              setSelectedMaterialForThreshold(null)
+            }}
+            material={selectedMaterialForThreshold}
+            onSave={handleSaveThreshold}
           />
         </div>
       </div>

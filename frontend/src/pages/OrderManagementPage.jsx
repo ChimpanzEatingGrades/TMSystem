@@ -28,41 +28,47 @@ const OrderManagementPage = () => {
   }, []);
 
   const handleCartOrderScanned = (orderData) => {
-    setShowCartQRScanner(false); // Close scanner on success
-    if (typeof orderData === 'string' && orderData.startsWith('CART:')) {
-      const dataString = orderData.substring(5); // Remove "CART:"
-      const parts = dataString.split('|');
+    console.log('=== CART ORDER SCANNED IN PAGE ===');
+    console.log('Order data received:', orderData);
+    console.log('Order data type:', typeof orderData);
+    
+    // Close scanner immediately
+    setShowCartQRScanner(false);
+    
+    // The data should already be parsed from CartQRScanner
+    if (orderData && orderData.type === 'CART_ORDER') {
+      console.log('Valid CART_ORDER data received');
       
-      if (parts.length >= 5) {
-        const [name, subtotal, itemsStr, requests, branchStr] = parts;
-        const branchId = branchStr.startsWith('BRANCH:') ? branchStr.substring(7) : null;
-
-        const items = itemsStr.split(',').map(item => {
-          const [idStr, quantityStr] = item.split(':');
-          const id = parseInt(idStr, 10);
-          const quantity = parseInt(quantityStr, 10);
-          const menuItem = menuItems.find(mi => mi.id === parseInt(id, 10));
-          const availability = menuItem?.branch_availability.find(a => String(a.branch) === String(branchId));
-
-          return {
-            menu_item: id,
-            quantity: quantity,
-            // Add details for display
-            menu_item_name: menuItem?.name || 'Unknown Item',
-            unit_price: availability?.price != null ? parseFloat(availability.price) : 0,
-          };
-        }).filter(item => !isNaN(item.menu_item) && !isNaN(item.quantity));
-
-        const parsedOrder = {
-          customer_name: name,
-          special_requests: requests,
-          branch: branchId ? String(branchId) : '',
-          items: items,
+      // Map the items to include necessary fields
+      const enhancedItems = orderData.items.map(item => {
+        const menuItem = menuItems.find(mi => mi.id === item.menu_item);
+        const availability = menuItem?.branch_availability?.find(
+          a => String(a.branch) === String(orderData.branch)
+        );
+        
+        return {
+          ...item,
+          menu_item_name: menuItem?.name || 'Unknown Item',
+          unit_price: availability?.price != null ? parseFloat(availability.price) : 0,
         };
+      });
+      
+      const parsedOrder = {
+        customer_name: orderData.customer_name,
+        special_requests: orderData.special_requests || '',
+        notes: 'Order from cart QR scan',
+        branch: orderData.branch ? String(orderData.branch) : '',
+        items: enhancedItems,
+      };
 
-        setScannedCartOrder(parsedOrder);
-        setShowCreateModal(true);
-      }
+      console.log('Final parsed order:', parsedOrder);
+      setScannedCartOrder(parsedOrder);
+      
+      // Automatically open create modal
+      setShowCreateModal(true);
+    } else {
+      console.error('Invalid order data format:', orderData);
+      alert('Invalid QR code format. Please scan a valid cart QR code.');
     }
   };
 

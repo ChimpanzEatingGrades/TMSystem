@@ -38,11 +38,22 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
         throw new Error("Please select a material and enter quantity")
       }
 
-      const res = await api.post("/inventory/stock-out/stock_out/", {
+      console.log('=== STOCK OUT REQUEST ===')
+      console.log('Material ID:', selectedMaterial)
+      console.log('Quantity:', quantity)
+      console.log('Notes:', notes)
+
+      const payload = {
         raw_material_id: Number.parseInt(selectedMaterial),
         quantity: Number.parseFloat(quantity),
         notes: notes.trim() || undefined,
-      })
+      }
+      
+      console.log('Sending payload:', payload)
+
+      const res = await api.post("/inventory/stock-out/stock_out/", payload)
+
+      console.log('Stock out response:', res.data)
 
       // Reset form
       setSelectedMaterial("")
@@ -61,8 +72,16 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
         }
       }
     } catch (err) {
-      console.error("Error processing stock out:", err)
-      setError(err.response?.data?.error || err.message || "Failed to process stock out")
+      console.error("=== STOCK OUT ERROR ===")
+      console.error("Error:", err)
+      console.error("Error response:", err.response?.data)
+      console.error("Error status:", err.response?.status)
+      
+      const errorMessage = err.response?.data?.error || 
+                          err.response?.data?.detail ||
+                          err.message || 
+                          "Failed to process stock out"
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }

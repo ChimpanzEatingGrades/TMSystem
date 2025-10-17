@@ -1,18 +1,37 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { Trash2, Plus, Minus, ArrowLeft, X, MapPin } from "lucide-react"
 import Navbar from "../components/Navbar"
 import { QRCodeCanvas } from "qrcode.react"
 
 function CheckoutModal({ order, subtotal, onClose }) {
-  // Include branch in QR string
+  const qrRef = useRef(null);
+  
   const qrString = `CART:${order.name}|${subtotal}|${order.cart
     .map((item) => `${item.id}:${item.quantity}`)
     .join(",")}|${order.requests || ""}|BRANCH:${order.branch || ""}`
 
+  console.log('Generated QR String:', qrString)
+
+  const handleDownloadQR = () => {
+    const canvas = qrRef.current?.querySelector('canvas');
+    if (!canvas) return;
+    
+    canvas.toBlob((blob) => {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `cart-qr-${Date.now()}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    });
+  };
+
   return (
-    <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl p-6 max-w-md w-full relative">
         <button
           onClick={onClose}
@@ -30,31 +49,39 @@ function CheckoutModal({ order, subtotal, onClose }) {
           </p>
         )}
 
-        <div className="flex justify-center mb-4">
+        <div ref={qrRef} className="flex justify-center mb-4 bg-white p-6 rounded-lg">
           <QRCodeCanvas
             value={qrString}
-            size={256}
+            size={320}
             bgColor="#ffffff"
             fgColor="#000000"
-            level="M"
+            level="H"
             includeMargin={true}
           />
         </div>
 
-        <div className="text-center">
-          <div className="text-lg font-semibold mb-2">
+        <div className="text-center space-y-3">
+          <div className="text-lg font-semibold">
             Total: ₱{subtotal.toFixed(2)}
           </div>
-          <p className="text-sm text-gray-600 mb-1">
+          <p className="text-sm text-gray-600">
             Customer: {order.name || "Walk-in"}
           </p>
           {order.requests && (
-            <p className="text-sm text-gray-500 italic mb-2">
-              “{order.requests}”
+            <p className="text-sm text-gray-500 italic">
+              "{order.requests}"
             </p>
           )}
-          <p className="text-xs text-gray-500">
-            Show this QR code to the cashier
+          
+          <button
+            onClick={handleDownloadQR}
+            className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg text-sm font-medium mt-4"
+          >
+            Download QR Code
+          </button>
+          
+          <p className="text-xs text-gray-500 mt-2">
+            Download the QR code and upload it in Order Management
           </p>
         </div>
       </div>

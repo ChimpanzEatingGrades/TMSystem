@@ -3,7 +3,7 @@ import { Html5Qrcode } from 'html5-qrcode'
 import { Camera, Upload, X, CheckCircle, AlertCircle } from 'lucide-react'
 
 const CartQRScanner = ({ isOpen, onClose, onOrderScanned }) => {
-  const [scanMode, setScanMode] = useState('upload') // Start with upload as default
+  const [scanMode, setScanMode] = useState('upload')
   const [error, setError] = useState('')
   const [scannedData, setScannedData] = useState(null)
   const [cameraPermission, setCameraPermission] = useState(null)
@@ -36,7 +36,6 @@ const CartQRScanner = ({ isOpen, onClose, onOrderScanned }) => {
       if (devices && devices.length > 0) {
         setCameras(devices)
         
-        // Filter out virtual cameras (OBS, ManyCam, etc.)
         const physicalCameras = devices.filter(device => {
           const label = device.label.toLowerCase()
           return !label.includes('obs') && 
@@ -45,15 +44,8 @@ const CartQRScanner = ({ isOpen, onClose, onOrderScanned }) => {
                  !label.includes('snap')
         })
         
-        // Priority order for camera selection:
-        // 1. Built-in laptop camera (usually contains "integrated" or "built-in")
-        // 2. Back/rear camera on mobile
-        // 3. First physical camera
-        // 4. Any camera as fallback
-        
         let selectedCam = null
         
-        // Try to find built-in/integrated camera
         selectedCam = physicalCameras.find(device => {
           const label = device.label.toLowerCase()
           return label.includes('integrated') || 
@@ -62,7 +54,6 @@ const CartQRScanner = ({ isOpen, onClose, onOrderScanned }) => {
                  label.includes('hd webcam')
         })
         
-        // If not found, try back camera (mobile)
         if (!selectedCam) {
           selectedCam = physicalCameras.find(device => {
             const label = device.label.toLowerCase()
@@ -70,12 +61,10 @@ const CartQRScanner = ({ isOpen, onClose, onOrderScanned }) => {
           })
         }
         
-        // If still not found, use first physical camera
         if (!selectedCam && physicalCameras.length > 0) {
           selectedCam = physicalCameras[0]
         }
         
-        // Fallback to any camera
         if (!selectedCam) {
           selectedCam = devices[0]
         }
@@ -99,13 +88,10 @@ const CartQRScanner = ({ isOpen, onClose, onOrderScanned }) => {
     if (isScanning.current || !selectedCamera) return
 
     try {
-      // Stop any existing instance
       await stopCamera()
 
-      // Create new instance
       html5QrcodeRef.current = new Html5Qrcode('camera-qr-reader')
       
-      // Start scanning
       await html5QrcodeRef.current.start(
         selectedCamera,
         {
@@ -143,16 +129,27 @@ const CartQRScanner = ({ isOpen, onClose, onOrderScanned }) => {
 
   const parseAndValidateQR = (decodedText) => {
     try {
-      console.log('Parsing QR data:', decodedText)
+      console.log('=== PARSING QR CODE ===')
+      console.log('Raw QR data:', decodedText)
       
       if (decodedText.startsWith('CART:')) {
-        const dataString = decodedText.substring(5);
-        const parts = dataString.split('|');
+        const dataString = decodedText.substring(5)
+        const parts = dataString.split('|')
         
-        if (parts.length >= 5) {
-          const [customerName, subtotalStr, itemsStr, requests, branchStr] = parts;
-          const subtotal = parseFloat(subtotalStr);
-          const branchId = branchStr.startsWith('BRANCH:') ? branchStr.substring(7) : null;
+        console.log('QR parts:', parts)
+        
+        if (parts.length >= 3) {
+          const customerName = parts[0]
+          const subtotalStr = parts[1]
+          const itemsStr = parts[2]
+          const requests = parts[3] || ''
+          const branchStr = parts[4] || ''
+          
+          let branchId = null
+          if (branchStr.startsWith('BRANCH:')) {
+            const extractedId = branchStr.substring(7)
+            branchId = extractedId ? parseInt(extractedId, 10) : null
+          }
           
           const items = itemsStr.split(',').map(itemStr => {
             const [menuItemId, qty] = itemStr.split(':')
@@ -163,46 +160,52 @@ const CartQRScanner = ({ isOpen, onClose, onOrderScanned }) => {
             }
           })
           
+          const parsedData = {
+            type: 'CART_ORDER',
+            customer_name: customerName,
+            special_requests: requests,
+            branch: branchId,
+            items: items,
+            subtotal: parseFloat(subtotalStr),
+            tax_amount: 0
+          }
+          
+          console.log('Parsed cart data:', parsedData)
+          
+          return {
+            valid: true,
+            data: parsedData
+          }
+        } else {
+          return { valid: false, error: `Invalid cart QR format (expected at least 3 parts, got ${parts.length})` }
+        }
+      }
+      
+      try {
+        const orderData = JSON.parse(decodedText)
+        
+        if (orderData.name && orderData.cart && Array.isArray(orderData.cart)) {
           return {
             valid: true,
             data: {
               type: 'CART_ORDER',
-              customer_name: customerName,
-              special_requests: requests,
-              branch: branchId ? parseInt(branchId, 10) : null,
-              items: items,
-              subtotal: subtotal,
+              customer_name: orderData.name,
+              special_requests: orderData.requests || '',
+              branch: orderData.branch || null,
+              items: orderData.cart.map(item => ({
+                menu_item: item.id,
+                quantity: item.quantity,
+                special_instructions: item.special_instructions || ''
+              })),
+              subtotal: orderData.total || orderData.cart.reduce((sum, item) => sum + item.totalPrice, 0),
               tax_amount: 0
             }
           }
         }
+      } catch (jsonErr) {
       }
       
-      const orderData = JSON.parse(decodedText)
-      
-      if (orderData.type === 'CART_ORDER') {
-        return { valid: true, data: orderData }
-      }
-      
-      if (orderData.name && orderData.cart && Array.isArray(orderData.cart)) {
-        return {
-          valid: true,
-          data: {
-            type: 'CART_ORDER',
-            customer_name: orderData.name,
-            special_requests: orderData.requests || '',
-            items: orderData.cart.map(item => ({
-              menu_item: item.id,
-              quantity: item.quantity,
-              special_instructions: item.special_instructions || ''
-            })),
-            subtotal: orderData.total || orderData.cart.reduce((sum, item) => sum + item.totalPrice, 0),
-            tax_amount: 0
-          }
-        }
-      }
-      
-      return { valid: false, error: 'Invalid cart QR code format' }
+      return { valid: false, error: 'Invalid QR code format. Please scan a valid cart QR code.' }
     } catch (err) {
       console.error('QR Parse Error:', err)
       return { valid: false, error: 'Failed to parse QR code: ' + err.message }
@@ -210,13 +213,16 @@ const CartQRScanner = ({ isOpen, onClose, onOrderScanned }) => {
   }
 
   const onScanSuccess = async (decodedText) => {
-    console.log('Cart QR Code scanned:', decodedText)
+    console.log('=== QR CODE SCANNED ===')
+    console.log('Raw decoded text:', decodedText)
     await stopCamera();
     
     const result = parseAndValidateQR(decodedText);
     
+    console.log('Parse result:', result)
+    
     if (result.valid) {
-      setScannedData(decodedText); // Pass the raw string
+      setScannedData(result.data);
       setError('')
     } else {
       setError(result.error)
@@ -224,7 +230,6 @@ const CartQRScanner = ({ isOpen, onClose, onOrderScanned }) => {
   }
 
   const onScanError = (err) => {
-    // Silently ignore scanning errors (they're normal during scanning)
   }
 
   const handleFileUpload = async (event) => {
@@ -233,12 +238,18 @@ const CartQRScanner = ({ isOpen, onClose, onOrderScanned }) => {
 
     setError('')
     
+    console.log('=== FILE UPLOAD DEBUG ===')
+    console.log('File:', file.name, file.type, file.size)
+    
     try {
       const html5QrCode = new Html5Qrcode('upload-qr-reader')
-      const decodedText = await html5QrCode.scanFile(file, false)
-      console.log('Cart QR Code from image:', decodedText)
+      const decodedText = await html5QrCode.scanFile(file, true)
+      
+      console.log('Successfully decoded QR from file:', decodedText)
       
       const result = parseAndValidateQR(decodedText)
+      
+      console.log('Parse result:', result)
       
       if (result.valid) {
         setScannedData(result.data)
@@ -247,18 +258,26 @@ const CartQRScanner = ({ isOpen, onClose, onOrderScanned }) => {
         setError(result.error)
       }
     } catch (err) {
-      console.error('Scan error:', err)
-      const errorMsg = err.message || 'Failed to read QR code from image'
-      setError(errorMsg.includes('No MultiFormat') 
-        ? 'Could not read QR code. Please ensure the image is clear and well-lit.'
-        : errorMsg
-      )
+      console.error('=== FILE SCAN ERROR ===')
+      console.error('Error:', err)
+      
+      let errorMessage = 'Could not read QR code from image. '
+      
+      if (err.message?.includes('No MultiFormat') || err.message?.includes('NotFoundException')) {
+        errorMessage += 'Please ensure the QR code is clearly visible and try again.'
+      } else {
+        errorMessage += `Error: ${err.message}`
+      }
+      
+      setError(errorMessage)
     }
   }
 
   const handleCreateOrder = () => {
     if (scannedData && onOrderScanned) {
-      onOrderScanned(scannedData); // Pass the raw string
+      console.log('=== CREATING ORDER ===')
+      console.log('Scanned data being passed:', scannedData)
+      onOrderScanned(scannedData);
       handleClose()
     }
   }
@@ -330,7 +349,7 @@ const CartQRScanner = ({ isOpen, onClose, onOrderScanned }) => {
             {error && (
               <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4 flex items-start gap-2">
                 <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
-                <span className="text-sm">{error}</span>
+                <span className="text-sm whitespace-pre-line">{error}</span>
               </div>
             )}
 
@@ -377,11 +396,14 @@ const CartQRScanner = ({ isOpen, onClose, onOrderScanned }) => {
             {scanMode === 'upload' && (
               <div>
                 <div id="upload-qr-reader" className="hidden"></div>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
-                  <label className="cursor-pointer">
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center hover:border-blue-500 transition-colors">
+                  <label className="cursor-pointer block">
                     <Upload className="h-12 w-12 text-gray-400 mx-auto mb-3" />
                     <span className="text-sm text-gray-600 block mb-2">
-                      Click to upload QR code image
+                      Click to upload cart QR code image
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      Supports JPG, PNG, WEBP
                     </span>
                     <input
                       type="file"
@@ -397,30 +419,33 @@ const CartQRScanner = ({ isOpen, onClose, onOrderScanned }) => {
         ) : (
           <div className="space-y-4">
             <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-              <div className="flex items-center gap-2 text-green-800">
+              <div className="flex items-center gap-2 text-green-800 mb-2">
                 <CheckCircle className="h-5 w-5" />
-                <span className="font-semibold">QR Code Scanned!</span>
+                <span className="font-semibold">Cart QR Code Scanned!</span>
               </div>
             </div>
 
             <div className="bg-gray-50 rounded-lg p-4 space-y-2">
               <div className="flex justify-between">
-                <span className="text-gray-600">Status:</span>
-                <span className="font-medium">Cart Data Ready</span>
+                <span className="text-gray-600">Customer:</span>
+                <span className="font-medium">{scannedData.customer_name || 'Walk-in'}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">Action:</span>
-                <span className="font-medium">Ready to Create Order</span>
+                <span className="text-gray-600">Items:</span>
+                <span className="font-medium">{scannedData.items?.length || 0}</span>
               </div>
-              <p className="text-sm text-gray-500 pt-2 border-t">
-                Click "Create Order" to proceed to the order confirmation screen.
-              </p>
-              {/*scannedData.special_requests && (
-                <div className="pt-2 border-t">
-                  <span className="text-gray-600 text-sm">Special Requests:</span>
-                  <p className="text-sm mt-1">{scannedData.special_requests}</p>
+              {scannedData.branch && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Branch ID:</span>
+                  <span className="font-medium">{scannedData.branch}</span>
                 </div>
-              )*/}
+              )}
+              {scannedData.special_requests && (
+                <div className="pt-2 border-t">
+                  <span className="text-gray-600 text-sm block mb-1">Special Requests:</span>
+                  <p className="text-sm">{scannedData.special_requests}</p>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-3">
