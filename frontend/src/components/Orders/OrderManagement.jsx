@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { 
   Clock, 
   CheckCircle, 
@@ -13,8 +13,12 @@ import {
   DollarSign,
   Plus,
   Trash2,
-  RefreshCw
+  RefreshCw,
+  Printer,
+  X
 } from "lucide-react";
+import { useReactToPrint } from 'react-to-print';
+import OrderReceipt from './OrderReceipt';
 import { 
   getCustomerOrders, 
   getOrderStats, 
@@ -41,6 +45,9 @@ const OrderManagement = () => {
     date_from: '',
     date_to: '',
   });
+  const [receiptOrder, setReceiptOrder] = useState(null);
+  const [showReceipt, setShowReceipt] = useState(false);
+  const receiptRef = useRef(null);
 
   const statusConfig = {
     pending: { 
@@ -192,6 +199,46 @@ const OrderManagement = () => {
     setShowOrderModal(true);
   };
 
+  const handlePrint = useReactToPrint({
+    content: () => receiptRef.current,
+    documentTitle: `Receipt-Order-${receiptOrder?.id || 'unknown'}`,
+    onBeforePrint: () => {
+      console.log('Preparing to print...')
+    },
+    onAfterPrint: () => {
+      console.log('Print completed or cancelled')
+    },
+    onPrintError: (error) => {
+      console.error('Print error:', error)
+      alert('Failed to print receipt. Please try again.')
+    },
+  })
+
+  const openReceipt = (order) => {
+    setReceiptOrder(order)
+    setShowReceipt(true)
+  }
+
+  const printReceipt = () => {
+    if (!receiptRef.current) {
+      console.error('Receipt ref is not available')
+      alert('Receipt preview not available. Please try again.')
+      return
+    }
+
+    // Confirm before printing
+    const confirmed = window.confirm(
+      `Print receipt for Order #${receiptOrder?.id}?\n\n` +
+      `Customer: ${receiptOrder?.customer_name}\n` +
+      `Total: ₱${receiptOrder?.total_amount}\n\n` +
+      `This will open your printer dialog.`
+    )
+
+    if (confirmed) {
+      handlePrint()
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -204,7 +251,7 @@ const OrderManagement = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-gray-50 pb-20">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
@@ -442,6 +489,13 @@ const OrderManagement = () => {
                               {action.label}
                             </button>
                           ))}
+                          <button
+                            onClick={() => openReceipt(order)}
+                            className="text-blue-600 hover:text-blue-900 p-1"
+                            title="Print Receipt"
+                          >
+                            <Printer className="h-4 w-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -476,6 +530,38 @@ const OrderManagement = () => {
           }}
           onStatusChange={handleStatusChange}
         />
+      )}
+
+      {/* Receipt Modal */}
+      {showReceipt && receiptOrder && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-auto relative">
+            <button
+              onClick={() => setShowReceipt(false)}
+              className="absolute top-4 right-4 z-10 p-2 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
+            >
+              <X size={20} />
+            </button>
+            
+            <OrderReceipt ref={receiptRef} order={receiptOrder} />
+            
+            <div className="p-6 border-t border-gray-200 flex gap-3 bg-gray-50">
+              <button
+                onClick={printReceipt}
+                className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors flex items-center justify-center gap-2"
+              >
+                <Printer size={18} />
+                Print Receipt
+              </button>
+              <button
+                onClick={() => setShowReceipt(false)}
+                className="flex-1 px-4 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-semibold transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
