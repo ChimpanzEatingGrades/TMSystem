@@ -4,10 +4,10 @@ import { Edit, Trash2, Clock, Calendar, CheckCircle, XCircle, Eye, PackageX } fr
 
 export default function MenuItemCard({ item, viewMode, status, onEdit, onDelete, selectedBranch }) {
   const branchAvail = status.branchAvailability;
-  const { isActive, isInDateRange, isInTimeRange, isAvailable, hasSufficient, outOfStock } = status
+  const { isActive, isInDateRange, isInTimeRange, isAvailable, hasSufficientIngredients, outOfStockIngredients } = status
 
   const isBranchSelected = selectedBranch !== "all";
-  const StatusBadge = ({ isAvailable, isActive, isInDateRange, isInTimeRange, hasSufficient, outOfStock }) => {
+  const StatusBadge = ({ isAvailable, isActive, isInDateRange, isInTimeRange }) => {
     if (isAvailable) {
       return (
         <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
@@ -17,9 +17,9 @@ export default function MenuItemCard({ item, viewMode, status, onEdit, onDelete,
       )
     }
 
-    if (!hasSufficient) {
+    if (!hasSufficientIngredients) {
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-800 text-xs font-medium rounded-full" title={`Missing: ${outOfStock.join(', ')}`}>
+        <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-800 text-xs font-medium rounded-full" title={`Missing: ${outOfStockIngredients.join(', ')}`}>
           <PackageX size={12} />
           Out of Stock
         </span>
@@ -98,11 +98,6 @@ export default function MenuItemCard({ item, viewMode, status, onEdit, onDelete,
                 {isBranchSelected && (
                   <>
                     <StatusBadge {...status} />
-                    {!hasSufficient && (
-                      <div className="text-xs text-red-600 mt-1">
-                        <span className="font-semibold">Missing:</span> {outOfStock.join(', ')}
-                      </div>
-                    )}
                     {branchAvail?.valid_from && (
                       <span className="text-xs text-gray-500">
                         Valid from {new Date(branchAvail.valid_from).toLocaleDateString()}
@@ -176,9 +171,9 @@ export default function MenuItemCard({ item, viewMode, status, onEdit, onDelete,
         {isBranchSelected && (
           <div className="space-y-2 mb-4">
             <StatusBadge {...status} />
-            {!hasSufficient && (
+            {!hasSufficientIngredients && (
               <div className="text-xs text-red-600">
-                <span className="font-semibold">Missing:</span> {outOfStock.join(', ')}
+                <span className="font-semibold">Missing:</span> {outOfStockIngredients.join(', ')}
               </div>
             )}
 

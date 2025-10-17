@@ -73,11 +73,17 @@ export default function RecipeModal({ onClose, existingRecipe, onSave, menuItemI
       description,
       yield_quantity: yieldQty,
       yield_uom: yieldUom,
-      items: selected,
-      menu_item: menuItemId,
+      items: selected.map(item => ({
+        raw_material_id: item.raw_material,
+        quantity: item.quantity,
+      })),
     }
 
     try {
+      // Only add menu_item if we are creating a new recipe
+      if (!existingRecipe?.id) {
+        payload.menu_item = menuItemId;
+      }
       let recipe
       if (existingRecipe?.id) {
         const res = await updateRecipe(existingRecipe.id, payload)

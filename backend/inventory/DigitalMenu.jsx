@@ -126,7 +126,7 @@ export default function CustomerMenuPage() {
     const inTime =
       (!avail.available_from || currentTime >= avail.available_from) &&
       (!avail.available_to || currentTime <= avail.available_to)
-    
+
     const hasIngredients = hasSufficientIngredients(item);
 
     return avail.is_active && inDate && inTime && hasIngredients;
