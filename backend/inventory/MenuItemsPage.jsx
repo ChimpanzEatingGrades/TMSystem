@@ -263,10 +263,7 @@ export default function MenuItemsPage() {
         const isInTimeRange =
           (!availability.available_from || currentTime >= availability.available_from) &&
           (!availability.available_to || currentTime <= availability.available_to)
-        
-        const { hasSufficient } = getIngredientStatus(item);
-        const isAvailable = isActive && isInDateRange && isInTimeRange && hasSufficient;
-
+        const isAvailable = isActive && isInDateRange && isInTimeRange
         return statusFilter === "available" ? isAvailable : !isAvailable
       })
     }
@@ -331,8 +328,8 @@ export default function MenuItemsPage() {
         isInTimeRange: true, // Default to true to not show specific error
         isAvailable: false,
         branchAvailability: null,
-        hasSufficient: true, // Default to true if no branch avail
-        outOfStock: [],
+        hasSufficientIngredients: true, // Default to true if no branch avail
+        outOfStockIngredients: [],
       }
     }
     const isActive = availability.is_active

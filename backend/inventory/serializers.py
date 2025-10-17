@@ -101,9 +101,13 @@ class RawMaterialSerializer(serializers.ModelSerializer):
 
 # RecipeItem serializer: readable nested raw_material, but writes accept raw_material_id
 class RecipeItemSerializer(serializers.ModelSerializer):
+    raw_material = RawMaterialSerializer(read_only=True)
+    raw_material_id = serializers.PrimaryKeyRelatedField(
+        queryset=RawMaterial.objects.all(), source='raw_material', write_only=True
+    )
     class Meta:
         model = RecipeItem
-        fields = ["id", "raw_material", "quantity"]
+        fields = ["id", "raw_material", "raw_material_id", "quantity"]
 
 class RecipeSerializer(serializers.ModelSerializer):
     items = RecipeItemSerializer(many=True, required=False)
