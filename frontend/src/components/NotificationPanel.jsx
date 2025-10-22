@@ -9,22 +9,56 @@ const NotificationPanel = () => {
   const [unreadCount, setUnreadCount] = useState(0)
   const [filter, setFilter] = useState('all') // all, low_stock, expiring, expired
   const [expanded, setExpanded] = useState(null)
+  const [autoChecking, setAutoChecking] = useState(false)
 
   useEffect(() => {
-    fetchNotifications()
-    // Poll for new notifications every 30 seconds
-    const interval = setInterval(fetchNotifications, 30000)
-    return () => clearInterval(interval)
+    fetchNotificationsWithAutoCheck()
+    const interval = setInterval(fetchNotificationsWithAutoCheck, 60000)
+    
+    const handleImmediateRefresh = () => {
+      console.log('NotificationPanel: "refreshInventory" event received. Fetching latest alerts...')
+      // Immediately fetch without the 500ms delay
+      fetchNotificationsWithAutoCheck()
+    }
+    
+    window.addEventListener('refreshInventory', handleImmediateRefresh)
+    
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('refreshInventory', handleImmediateRefresh)
+    }
   }, [])
+
+  const fetchNotificationsWithAutoCheck = async () => {
+    try {
+      setAutoChecking(true)
+      console.log('=== AUTO-CHECK STARTING ===')
+      console.log('Timestamp:', new Date().toISOString())
+      
+      // Call auto_check_all to recalculate all alerts based on current inventory
+      await api.post('/inventory/stock-alerts/auto_check_all/')
+      
+      console.log('=== AUTO-CHECK COMPLETE - FETCHING ALERTS ===')
+      
+      // Then fetch the refreshed alerts
+      await fetchNotifications()
+      
+    } catch (error) {
+      console.error('=== ERROR DURING AUTO-CHECK ===', error)
+      await fetchNotifications()
+    } finally {
+      setAutoChecking(false)
+    }
+  }
 
   const fetchNotifications = async () => {
     try {
       setLoading(true)
+      console.log('Fetching active alerts...')
       const response = await api.get('/inventory/stock-alerts/active/')
-      const alerts = response.data
-      
-      setNotifications(alerts)
-      setUnreadCount(alerts.filter(n => n.status === 'active').length)
+      console.log('Received', response.data.length, 'active alerts')
+      setNotifications(response.data)
+      setUnreadCount(response.data.filter(n => n.status === 'active').length)
     } catch (error) {
       console.error('Error fetching notifications:', error)
     } finally {
@@ -47,6 +81,19 @@ const NotificationPanel = () => {
       fetchNotifications()
     } catch (error) {
       console.error('Error resolving notification:', error)
+    }
+  }
+
+  // Clear all alerts (resolve non-resolved)
+  const clearAllAlerts = async () => {
+    try {
+      setLoading(true)
+      await api.post('/inventory/stock-alerts/clear_all/')
+      await fetchNotifications()
+    } catch (error) {
+      console.error('Error clearing alerts:', error)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -267,13 +314,22 @@ const NotificationPanel = () => {
 
             {/* Footer */}
             <div className="p-4 bg-gray-50 border-t">
-              <button
-                onClick={fetchNotifications}
-                disabled={loading}
-                className="w-full px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
-              >
-                {loading ? 'Refreshing...' : 'Refresh Alerts'}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={fetchNotificationsWithAutoCheck}
+                  disabled={loading}
+                  className="w-full px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+                >
+                  {loading ? 'Refreshing...' : 'Refresh Alerts'}
+                </button>
+                <button
+                  onClick={clearAllAlerts}
+                  disabled={loading || autoChecking || notifications.length === 0}
+                  className="w-full px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+                >
+                  Clear Alerts
+                </button>
+              </div>
             </div>
           </div>
         </div>

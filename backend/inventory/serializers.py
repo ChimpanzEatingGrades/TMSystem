@@ -288,6 +288,7 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
     def update_inventory(self, purchase_order):
         from datetime import timedelta
         from .models import StockBatch
+        from inventory.views import RawMaterialViewSet
         
         for item in purchase_order.items.all():
             print(f"Processing item: {item.name}, Quantity: {item.quantity}")
@@ -308,7 +309,7 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
                     shelf_life_days=item_shelf_life,
                     material_type=item_material_type
                 )
-                print(f"Created new material: {material.name} with shelf_life: {material.shelf_life_days} days, type: {material.material_type}")
+                print(f"Created new material: {material.name}")
             
             if item_shelf_life is not None:
                 batch_shelf_life = item_shelf_life
@@ -321,16 +322,18 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
                     purchase_date=purchase_order.purchase_date,
                     expiry_date=expiry_date
                 )
-                print(f"Created batch: {batch.quantity} {material.unit} of {material.name}, expires on {expiry_date} ({batch_shelf_life} days shelf life)")
-                notes_text = f"Stock in from Purchase Order #{purchase_order.id} (Batch expires: {expiry_date}, {batch_shelf_life} day shelf life)"
+                print(f"Created batch: {batch.quantity} {material.unit}")
+                notes_text = f"Stock in from Purchase Order #{purchase_order.id}"
             else:
-                print(f"Skipping batch creation for supply item: {material.name} (non-perishable)")
-                notes_text = f"Stock in from Purchase Order #{purchase_order.id} (Non-perishable supply item)"
+                print(f"Non-perishable item: {material.name}")
+                notes_text = f"Stock in from Purchase Order #{purchase_order.id} (Supply)"
             
             material.quantity += item.quantity
             material.save()
             
-            print(f"Material after save - ID: {material.id}, Total Quantity: {material.quantity}")
+            # Check and create alerts after quantity update
+            viewset = RawMaterialViewSet()
+            viewset.check_and_create_alerts(material)
             
             StockTransaction.objects.create(
                 transaction_type='stock_in',
@@ -342,7 +345,8 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
                 performed_by_name=purchase_order.encoded_by_name
             )
             
-            print(f"Updated inventory: {material.name} - Added {item.quantity} {item.unit.abbreviation}")
+            print(f"Updated inventory: {material.name} - Added {item.quantity}")
+            print(f"Checked and created alerts for {material.name}")
 
 class StockTransactionSerializer(serializers.ModelSerializer):
     raw_material_name = serializers.CharField(source='raw_material.name', read_only=True)

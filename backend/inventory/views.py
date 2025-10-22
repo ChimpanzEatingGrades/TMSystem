@@ -67,9 +67,11 @@ class RawMaterialViewSet(viewsets.ModelViewSet):
         self.check_and_create_alerts(material)
     
     def check_and_create_alerts(self, material):
-        """Check material status and create alerts if needed"""
-        from django.utils import timezone
+        """Check material status and create/resolve alerts based on current conditions"""
+        # First, resolve any outdated alerts for this material
+        self.resolve_outdated_alerts(material)
         
+        # Then create new alerts if needed
         # Check for expired batches (not material itself)
         expired_batches = material.get_expired_batches()
         if expired_batches.exists():
@@ -136,6 +138,32 @@ class RawMaterialViewSet(viewsets.ModelViewSet):
                     'threshold_value': material.reorder_level,
                 }
             )
+    
+    def resolve_outdated_alerts(self, material):
+        """Resolve alerts that are no longer valid for this material"""
+        # If quantity is above minimum threshold, resolve low_stock alerts
+        if material.quantity > material.minimum_threshold:
+            StockAlert.objects.filter(
+                raw_material=material,
+                alert_type='low_stock',
+                status='active'
+            ).update(status='resolved', resolved_at=timezone.now())
+        
+        # If quantity > 0, resolve out_of_stock alerts
+        if material.quantity > 0:
+            StockAlert.objects.filter(
+                raw_material=material,
+                alert_type='out_of_stock',
+                status='active'
+            ).update(status='resolved', resolved_at=timezone.now())
+        
+        # If quantity > reorder_level, resolve reorder alerts
+        if material.quantity > material.reorder_level:
+            StockAlert.objects.filter(
+                raw_material=material,
+                alert_type='reorder',
+                status='active'
+            ).update(status='resolved', resolved_at=timezone.now())
     
     @action(detail=False, methods=['get'])
     def low_stock_items(self, request):
@@ -424,6 +452,10 @@ class StockOutViewSet(viewsets.ViewSet):
                     material.quantity -= quantity_needed
                     material.save()
                     
+                    # Recalculate alerts after stock has changed
+                    viewset = RawMaterialViewSet()
+                    viewset.check_and_create_alerts(material)
+                    
                     stock_transaction = StockTransaction.objects.create(
                         transaction_type='stock_out',
                         raw_material=material,
@@ -508,6 +540,10 @@ class StockOutViewSet(viewsets.ViewSet):
                 # Update material total quantity
                 material.quantity -= quantity_needed
                 material.save()
+                
+                # Recalculate alerts after stock has changed
+                viewset = RawMaterialViewSet()
+                viewset.check_and_create_alerts(material)
                 
                 # Create stock transaction with batch details
                 if batches_used:
@@ -940,6 +976,13 @@ class StockAlertViewSet(viewsets.ModelViewSet):
         alert.resolve()
         serializer = self.get_serializer(alert)
         return Response(serializer.data)
+    
+    @action(detail=False, methods=['post'])
+    def clear_all(self, request):
+        """Resolve all non-resolved alerts (clears the panel)."""
+        to_clear = self.get_queryset().exclude(status='resolved')
+        count = to_clear.update(status='resolved', resolved_at=timezone.now())
+        return Response({'message': 'Alerts cleared', 'resolved_count': count})
     
     @action(detail=False, methods=['post'])
     def check_all_materials(self, request):

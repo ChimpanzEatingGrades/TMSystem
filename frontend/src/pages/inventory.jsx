@@ -140,6 +140,8 @@ export default function Inventory() {
       setError("")
       
       setMaterials((prev) => prev.map((m) => (m.id === id ? res.data : m)))
+      // Sync alerts panel
+      window.dispatchEvent(new CustomEvent('refreshInventory'))
     } catch (err) {
       console.error('Update error:', err)
       setError(`Failed to update material: ${err.response?.data?.detail || err.message}`)
@@ -206,6 +208,8 @@ export default function Inventory() {
       const res = await api.put(`/inventory/rawmaterials/${materialId}/`, updatePayload)
       setMaterials((prev) => prev.map((m) => (m.id === materialId ? res.data : m)))
       setError('')
+      // Sync alerts panel
+      window.dispatchEvent(new CustomEvent('refreshInventory'))
       alert('Thresholds updated successfully!')
     } catch (err) {
       console.error('Error updating thresholds:', err)
@@ -225,6 +229,8 @@ export default function Inventory() {
         fetchPurchaseOrders()
       }
       fetchMaterials()
+      // Sync alerts panel
+      window.dispatchEvent(new CustomEvent('refreshInventory'))
     } catch (error) {
       console.error("Error in handlePurchaseSuccess:", error)
       setError("Failed to update purchase orders list")
@@ -240,18 +246,24 @@ export default function Inventory() {
   const handleStockOutSuccess = (data) => {
     fetchMaterials()
     setError("")
+    // Sync alerts panel
+    window.dispatchEvent(new CustomEvent('refreshInventory'))
   }
 
   const handleClearInventorySuccess = (data) => {
     setMaterials([])
     setPurchaseOrders([])
     setError("")
+    // Sync alerts panel
+    window.dispatchEvent(new CustomEvent('refreshInventory'))
   }
 
   const handleRefreshInventory = async () => {
     setRefreshing(true)
     try {
       await fetchMaterials()
+      // Sync alerts panel
+      window.dispatchEvent(new CustomEvent('refreshInventory'))
     } catch (error) {
       console.error("Error refreshing inventory:", error)
       setError("Failed to refresh inventory")
@@ -270,7 +282,7 @@ export default function Inventory() {
       case "time_desc":
         return (new Date(b.created_at || 0).getTime() || b.id || 0) - (new Date(a.created_at || 0).getTime() || a.id || 0)
       case "time_asc":
-        return (new Date(a.created_at || 0).getTime() || a.id || 0) - (new Date(b.created_at || 0).getTime() || a.id || 0)
+        return (new Date(a.created_at || 0).getTime() || a.id || 0) - (new Date(b.created_at || 0).getTime() || b.id || 0)
       default:
         return 0
     }

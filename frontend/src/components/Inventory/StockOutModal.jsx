@@ -55,6 +55,9 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
 
       console.log('Stock out response:', res.data)
 
+      // Notify alerts panel to recompute and refresh
+      window.dispatchEvent(new CustomEvent('refreshInventory'))
+
       // Reset form
       setSelectedMaterial("")
       setQuantity("")

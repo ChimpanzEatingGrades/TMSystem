@@ -146,6 +146,9 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSuccess }) => {
       if (!res.ok) throw new Error("Failed to create purchase order.")
       const data = await res.json()
 
+      // Notify alerts panel to recompute and refresh
+      window.dispatchEvent(new CustomEvent('refreshInventory'))
+
       setItems([
         { name: "", quantity: "", unit: "", unitPrice: "", totalPrice: 0, isNewMaterial: false, selectedMaterial: "", expiry_date: "" },
       ])
