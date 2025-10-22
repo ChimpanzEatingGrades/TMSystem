@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Plus, Search, Filter, Grid, List, MapPin } from "lucide-react"
+import { Plus, Search, Filter, Grid, List, MapPin, QrCode } from "lucide-react";
+import QRCode from "qrcode"; // Corrected import for the 'qrcode' library
 import {
   getMenuItems,
   getCategories,
@@ -82,6 +83,27 @@ function BranchesModal({ open, onClose }) {
     }
   }
 
+  const handleDownloadQR = async (branch) => {
+    // Use window.location.origin to get the base URL (e.g., http://localhost:5173)
+    const url = `${window.location.origin}/digital-menu/${branch.id}`
+    try {
+      const qrCodeDataUrl = await QRCode.toDataURL(url, {
+        errorCorrectionLevel: "H", // High error correction
+        margin: 2,
+        width: 256,
+      })
+      const link = document.createElement("a")
+      link.href = qrCodeDataUrl
+      link.download = `branch-qr-${branch.name.toLowerCase().replace(/\s+/g, "-")}.png`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    } catch (err) {
+      console.error("Failed to generate QR code", err)
+      setError("Could not generate QR code. Please try again.")
+    }
+  }
+
   if (!open) return null
 
   return (
@@ -154,6 +176,12 @@ function BranchesModal({ open, onClose }) {
                         Delete
                       </button>
                     </div>
+                    <button
+                      onClick={() => handleDownloadQR(branch)}
+                      className="text-green-600 hover:underline px-2 flex items-center gap-1"
+                    >
+                      <QrCode size={14} /> QR
+                    </button>
                   </>
                 )}
               </li>
