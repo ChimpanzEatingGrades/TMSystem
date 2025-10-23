@@ -47,6 +47,12 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
         force_expired: forceExpired
       })
 
+      console.log('Stock out response:', res.data)
+
+      // Dispatch refresh event IMMEDIATELY to update alerts
+      console.log('Dispatching refreshInventory event')
+      window.dispatchEvent(new CustomEvent('refreshInventory'))
+
       // Reset form
       setSelectedMaterial('')
       setQuantity('')

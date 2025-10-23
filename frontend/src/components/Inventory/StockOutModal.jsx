@@ -11,10 +11,14 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
   const [notes, setNotes] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [expiredBatchesInfo, setExpiredBatchesInfo] = useState([])
+  const [forceExpired, setForceExpired] = useState(false)
 
   useEffect(() => {
     if (isOpen) {
       fetchAvailableMaterials()
+      setExpiredBatchesInfo([])
+      setForceExpired(false)
     }
   }, [isOpen])
 
@@ -47,6 +51,7 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
         raw_material_id: Number.parseInt(selectedMaterial),
         quantity: Number.parseFloat(quantity),
         notes: notes.trim() || undefined,
+        force_expired: forceExpired,
       }
       
       console.log('Sending payload:', payload)
@@ -55,13 +60,23 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
 
       console.log('Stock out response:', res.data)
 
-      // Notify alerts panel to recompute and refresh
+      // Check if there are still expired batches remaining
+      if (res.data.expired_batches_remaining > 0) {
+        console.warn('⚠️ Expired batches still remain:', res.data.expired_batches_remaining)
+        setExpiredBatchesInfo(res.data.expired_batches || [])
+        setError(`Success! But note: ${res.data.expired_batches_remaining} expired batch(es) still remain. Check "Stock out expired batches" to remove them.`)
+        setLoading(false)
+        return // Don't close modal
+      }
+
+      // Dispatch refresh event to update alerts
       window.dispatchEvent(new CustomEvent('refreshInventory'))
 
       // Reset form
       setSelectedMaterial("")
       setQuantity("")
       setNotes("")
+      setForceExpired(false)
 
       // Close modal first
       onClose()
@@ -139,14 +154,73 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
             </div>
 
             {selectedMaterialData && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="flex items-center gap-2 text-blue-800">
-                  <Package size={16} />
-                  <span className="font-medium">Available Stock:</span>
-                  <span className="font-semibold">
-                    {selectedMaterialData.quantity} {selectedMaterialData.unit}
-                  </span>
+              <>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-center gap-2 text-blue-800">
+                    <Package size={16} />
+                    <span className="font-medium">Available Stock:</span>
+                    <span className="font-semibold">
+                      {selectedMaterialData.quantity} {selectedMaterialData.unit}
+                    </span>
+                  </div>
+                  {selectedMaterialData.expired_batches_count > 0 && (
+                    <p className="text-xs text-orange-600 mt-2">
+                      ⚠️ {selectedMaterialData.expired_batches_count} expired batch(es) detected
+                    </p>
+                  )}
                 </div>
+
+                {/* Show expired batch warning immediately if any exist */}
+                {selectedMaterialData.expired_batches_count > 0 && (
+                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="text-orange-600 flex-shrink-0 mt-0.5" size={20} />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-orange-900 mb-2">
+                          This material has {selectedMaterialData.expired_batches_count} expired batch(es)
+                        </p>
+                        <label className="flex items-start gap-3 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={forceExpired}
+                            onChange={(e) => setForceExpired(e.target.checked)}
+                            className="mt-1 h-4 w-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
+                          />
+                          <div className="flex-1">
+                            <span className="text-sm font-medium text-orange-900">
+                              Stock out expired batches for disposal
+                            </span>
+                            <p className="text-xs text-orange-700 mt-1">
+                              Check this to remove EXPIRED inventory. Leave unchecked to use fresh stock (FIFO).
+                            </p>
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Show this only after stock-out attempt reveals remaining expired batches */}
+            {expiredBatchesInfo.length > 0 && !selectedMaterialData?.expired_batches_count && (
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={forceExpired}
+                    onChange={(e) => setForceExpired(e.target.checked)}
+                    className="mt-1 h-4 w-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
+                  />
+                  <div className="flex-1">
+                    <span className="text-sm font-medium text-orange-900">
+                      Stock out expired batches for disposal
+                    </span>
+                    <p className="text-xs text-orange-700 mt-1">
+                      Enable this to remove expired inventory from stock. This will use EXPIRED batches instead of fresh ones.
+                    </p>
+                  </div>
+                </label>
               </div>
             )}
 
@@ -189,7 +263,7 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
               </button>
               <button
                 type="submit"
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 flex items-center justify-center gap-2"
+                className={`flex-1 px-4 py-2 ${forceExpired ? 'bg-orange-600 hover:bg-orange-700' : 'bg-red-600 hover:bg-red-700'} text-white rounded-lg font-semibold hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 flex items-center justify-center gap-2`}
                 disabled={loading || !selectedMaterial || !quantity}
               >
                 {loading ? (
@@ -200,7 +274,7 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
                 ) : (
                   <>
                     <Minus size={16} />
-                    Stock Out
+                    {forceExpired ? 'Stock Out Expired' : 'Stock Out'}
                   </>
                 )}
               </button>

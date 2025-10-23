@@ -35,10 +35,14 @@ const NotificationPanel = () => {
       console.log('=== AUTO-CHECK STARTING ===')
       console.log('Timestamp:', new Date().toISOString())
       
-      // Call auto_check_all to recalculate all alerts based on current inventory
-      await api.post('/inventory/stock-alerts/auto_check_all/')
+      // Small delay to ensure backend completes processing
+      await new Promise(resolve => setTimeout(resolve, 300))
       
-      console.log('=== AUTO-CHECK COMPLETE - FETCHING ALERTS ===')
+      // Call auto_check_all to recalculate all alerts based on current inventory
+      const checkResponse = await api.post('/inventory/stock-alerts/auto_check_all/')
+      console.log('=== AUTO-CHECK RESPONSE ===', checkResponse.data)
+      console.log('Alerts created:', checkResponse.data.alerts_created)
+      console.log('Active alerts count:', checkResponse.data.active_alerts_count)
       
       // Then fetch the refreshed alerts
       await fetchNotifications()

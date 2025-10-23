@@ -104,18 +104,19 @@ class RawMaterial(models.Model):
         return self.material_type == 'supplies'
     
     def get_expired_batches(self):
-        """Get all expired batches for this material"""
+        """Get all expired batches with remaining quantity"""
         from django.utils import timezone
-        return self.batches.filter(expiry_date__lt=timezone.now().date())
+        return self.batches.filter(expiry_date__lt=timezone.now().date(), quantity__gt=0)
     
     def get_expiring_soon_batches(self):
-        """Get batches expiring within 2 days"""
+        """Get batches expiring within 2 days with remaining quantity"""
         from django.utils import timezone
         from datetime import timedelta
         threshold = timezone.now().date() + timedelta(days=2)
         return self.batches.filter(
             expiry_date__lte=threshold,
-            expiry_date__gte=timezone.now().date()
+            expiry_date__gte=timezone.now().date(),
+            quantity__gt=0
         )
     
     def save(self, *args, **kwargs):

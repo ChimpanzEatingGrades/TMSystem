@@ -164,6 +164,22 @@ class RawMaterialViewSet(viewsets.ModelViewSet):
                 alert_type='reorder',
                 status='active'
             ).update(status='resolved', resolved_at=timezone.now())
+
+        # If there are no more expired batches with quantity, resolve expired alerts
+        if not material.get_expired_batches().exists():
+            StockAlert.objects.filter(
+                raw_material=material,
+                alert_type='expired',
+                status='active'
+            ).update(status='resolved', resolved_at=timezone.now())
+        
+        # If there are no more expiring_soon batches with quantity, resolve those alerts
+        if not material.get_expiring_soon_batches().exists():
+            StockAlert.objects.filter(
+                raw_material=material,
+                alert_type='expiring_soon',
+                status='active'
+            ).update(status='resolved', resolved_at=timezone.now())
     
     @action(detail=False, methods=['get'])
     def low_stock_items(self, request):
@@ -509,7 +525,10 @@ class StockOutViewSet(viewsets.ViewSet):
                             'was_expired': batch.is_expired
                         })
                         remaining_quantity = 0
-                        batch.save()
+                        if batch.quantity == 0:
+                            batch.delete()  # Delete empty batch immediately
+                        else:
+                            batch.save()
                     else:
                         # Use all of this batch and continue
                         quantity_from_batch = batch.quantity
@@ -521,7 +540,7 @@ class StockOutViewSet(viewsets.ViewSet):
                         })
                         remaining_quantity -= quantity_from_batch
                         batch.quantity = 0
-                        batch.save()
+                        batch.delete()  # Delete empty batch immediately
                 
                 # If still insufficient stock after using available batches
                 if remaining_quantity > 0:
@@ -1132,6 +1151,21 @@ class StockAlertViewSet(viewsets.ModelViewSet):
             'expiring_soon': 0
         }
         
+        # Resolve stale expired/expiring alerts first
+        for material in RawMaterial.objects.all():
+            if not material.get_expired_batches().exists():
+                StockAlert.objects.filter(
+                    raw_material=material,
+                    alert_type='expired',
+                    status='active'
+                ).update(status='resolved', resolved_at=timezone.now())
+            if not material.get_expiring_soon_batches().exists():
+                StockAlert.objects.filter(
+                    raw_material=material,
+                    alert_type='expiring_soon',
+                    status='active'
+                ).update(status='resolved', resolved_at=timezone.now())
+
         # 1. Check all materials for stock levels
         for material in RawMaterial.objects.all():
             # Out of stock
@@ -1179,7 +1213,7 @@ class StockAlertViewSet(viewsets.ModelViewSet):
                 if created:
                     alerts_created['reorder'] += 1
         
-        # 2. Check for expired batches
+        # 2. Check for expired batches (with remaining quantity)
         expired_batches = StockBatch.objects.filter(
             expiry_date__lt=today,
             quantity__gt=0
@@ -1202,7 +1236,7 @@ class StockAlertViewSet(viewsets.ModelViewSet):
             if created:
                 alerts_created['expired'] += 1
         
-        # 3. Check for expiring soon (within 2 days)
+        # 3. Check for expiring soon (within 2 days, with remaining quantity)
         threshold = today + timedelta(days=2)
         expiring_soon = StockBatch.objects.filter(
             expiry_date__lte=threshold,
@@ -1237,6 +1271,14 @@ class StockAlertViewSet(viewsets.ModelViewSet):
 class BranchViewSet(viewsets.ModelViewSet):
     queryset = Branch.objects.all()
     serializer_class = BranchSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+
+
+class MenuItemBranchAvailabilityViewSet(viewsets.ModelViewSet):
+    serializer_class = BranchSerializer
+    queryset = MenuItemBranchAvailability.objects.select_related("menu_item", "branch").all()
+    serializer_class = MenuItemBranchAvailabilitySerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
 
