@@ -175,7 +175,7 @@ export default function ShoppingCartPage() {
           </div>
 
           <a
-            href="/digital-menu"
+            href={order.branch ? `/digital-menu/${order.branch}` : "/digital-menu"}
             className="flex items-center gap-2 text-gray-600 hover:text-black"
           >
             <ArrowLeft size={18} />

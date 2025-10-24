@@ -1,5 +1,6 @@
 "use client"
 
+import { useParams } from "react-router-dom"
 import { useEffect, useState } from "react"
 import {
   Search,
@@ -14,6 +15,7 @@ import { getMenuItems, getCategories, getBranches } from "../api/inventoryAPI"
 import Navbar from "../components/Navbar"
 
 export default function CustomerMenuPage() {
+  const { branchId } = useParams()
   const [menuItems, setMenuItems] = useState([])
   const [categories, setCategories] = useState([])
   const [branches, setBranches] = useState([])
@@ -45,16 +47,16 @@ export default function CustomerMenuPage() {
 
   // ✅ Once branches are loaded, auto-select saved branch if it exists
   useEffect(() => {
-    if (branches.length > 0 && order.branch && !selectedBranch) {
-      // Confirm that the saved branch still exists
-      const exists = branches.find(
-        (b) => String(b.id) === String(order.branch)
-      )
-      if (exists) {
-        setSelectedBranch(String(order.branch))
+    if (branches.length > 0) {
+      const targetBranchId = branchId || order.branch
+      if (targetBranchId && !selectedBranch) {
+        const exists = branches.find((b) => String(b.id) === String(targetBranchId))
+        if (exists) {
+          handleBranchChange(String(targetBranchId), true) // Silently set branch
+        }
       }
     }
-  }, [branches, order.branch])
+  }, [branches, branchId, order.branch])
 
   // ✅ Refilter whenever branch/category/search changes
   useEffect(() => {
@@ -211,26 +213,29 @@ export default function CustomerMenuPage() {
   }
 
   // ✅ Handle branch change (clears cart if needed)
-  const handleBranchChange = (branchId) => {
-    if (branchId !== order.branch && cart.length > 0) {
-      if (!window.confirm("Changing branch will clear your cart. Continue?"))
+  const handleBranchChange = (newBranchId, silent = false) => {
+    const isBranchChanging = newBranchId !== order.branch
+
+    if (!silent && isBranchChanging && cart.length > 0) {
+      if (!window.confirm("Changing branch will clear your cart. Continue?")) {
+        // Reset dropdown to current branch if user cancels
         return
+      }
     }
 
-    const branchName =
-      branches.find((b) => String(b.id) === String(branchId))?.name || ""
+    const branchName = branches.find((b) => String(b.id) === String(newBranchId))?.name || ""
 
-    setSelectedBranch(branchId)
+    setSelectedBranch(newBranchId)
     setOrder((prev) => ({
       ...prev,
-      cart: [],
-      branch: branchId,
+      cart: !silent && isBranchChanging ? [] : prev.cart,
+      branch: newBranchId,
       branchName,
     }))
   }
 
-  // ✅ Empty state before picking branch
-  if (!selectedBranch) {
+  // ✅ Empty state if no branch is in URL and none is selected
+  if (!branchId && !selectedBranch) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <Navbar />
@@ -245,7 +250,7 @@ export default function CustomerMenuPage() {
 
           <select
             value={selectedBranch}
-            onChange={(e) => handleBranchChange(e.target.value)}
+            onChange={(e) => handleBranchChange(e.target.value, false)}
             className="w-full max-w-xs px-4 py-3 border rounded-lg text-gray-700 focus:ring-2 focus:ring-yellow-400"
           >
             <option value="">Select Branch</option>
@@ -330,25 +335,8 @@ export default function CustomerMenuPage() {
             </select>
           </div>
 
-          {/* Branch Selector */}
-          <div className="relative">
-            <MapPin
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-              size={20}
-            />
-            <select
-              value={selectedBranch}
-              onChange={(e) => handleBranchChange(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-yellow-400 bg-white"
-            >
-              <option value="">Pick a branch</option>
-              {branches.map((branch) => (
-                <option key={branch.id} value={String(branch.id)}>
-                  {branch.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Branch Selector removed from main view */}
+          <div className="md:col-span-1"></div>
         </div>
 
         {/* Menu Items */}

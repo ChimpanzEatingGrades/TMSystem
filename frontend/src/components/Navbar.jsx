@@ -1,16 +1,28 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useNavigate, useLocation } from "react-router-dom"
-import { Menu, X, ChefHat, User, LogOut, Home, Info, ShoppingCart, ClipboardList } from "lucide-react"
+import { useNavigate, useLocation } from "react-router-dom";
+import { Menu, X, ChefHat, User, LogOut, Home, Info, ShoppingCart, ClipboardList, Utensils } from "lucide-react";
 import { ACCESS_TOKEN, REFRESH_TOKEN } from "../constants"
 import NotificationPanel from "./NotificationPanel"
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [menuLink, setMenuLink] = useState("/digital-menu");
   const navigate = useNavigate()
   const location = useLocation()
+
+  useEffect(() => {
+    // This effect runs on the client side and can access localStorage
+    const storedOrder = localStorage.getItem("customer_order");
+    if (storedOrder) {
+      const order = JSON.parse(storedOrder);
+      if (order.branch) {
+        setMenuLink(`/digital-menu/${order.branch}`);
+      }
+    }
+  }, [location]); // Re-check on location change in case it's cleared
 
   useEffect(() => {
     const token = localStorage.getItem(ACCESS_TOKEN)
@@ -73,12 +85,12 @@ const Navbar = () => {
               </button>
 
               <button
-                onClick={() => handleNavigation("/digital-menu")}
+                onClick={() => handleNavigation(menuLink)}
                 className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center space-x-1 ${
                   isActive("/digital-menu") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
                 }`}
               >
-                <Home size={16} />
+                <Utensils size={16} />
                 <span>Menu</span>
               </button>
 
@@ -206,12 +218,12 @@ const Navbar = () => {
             </button>
 
             <button
-              onClick={() => handleNavigation("/digital-menu")}
+              onClick={() => handleNavigation(menuLink)}
               className={`block px-3 py-2 rounded-md text-base font-medium w-full text-left transition-colors duration-200 flex items-center space-x-2 ${
                 isActive("/digital-menu") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
               }`}
             >
-              <Home size={16} />
+              <Utensils size={16} />
               <span>Menu</span>
             </button>
 

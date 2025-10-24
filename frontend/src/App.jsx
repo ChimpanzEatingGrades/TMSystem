@@ -34,7 +34,8 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<RegisterAndLogout />} />
         <Route path="/logout" element={<Logout />} />
-        <Route path="/digital-menu" element={<DigitalMenu />} />
+        <Route path="/digital-menu/:branchId" element={<DigitalMenu />} />
+        <Route path="/digital-menu" element={<DigitalMenu />} /> 
         <Route path="/shopping-cart" element={<ShoppingCart />} />
         <Route path="/about" element={<About />} />
         <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>}
