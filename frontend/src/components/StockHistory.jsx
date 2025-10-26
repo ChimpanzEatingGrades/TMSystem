@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { RefreshCw } from "lucide-react"
 import api from "../api"
 
-const StockHistory = () => {
+const StockHistory = ({ selectedBranch }) => {
   const [transactions, setTransactions] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -19,16 +19,21 @@ const StockHistory = () => {
   const [query, setQuery] = useState("")
 
   useEffect(() => {
-    fetchTransactions()
-    fetchMaterials()
-    fetchUsers()
-  }, [filters])
+    if (selectedBranch) {
+      fetchTransactions()
+      fetchMaterials()
+      fetchUsers()
+    }
+  }, [filters, selectedBranch])
 
   const fetchTransactions = async () => {
+    if (!selectedBranch) return
+    
     try {
       setLoading(true)
       const params = new URLSearchParams()
 
+      params.append("branch_id", selectedBranch)
       if (filters.transaction_type) params.append("transaction_type", filters.transaction_type)
       if (filters.raw_material_id) params.append("raw_material_id", filters.raw_material_id)
       if (filters.user_id) params.append("user_id", filters.user_id)
@@ -44,8 +49,11 @@ const StockHistory = () => {
   }
 
   const fetchMaterials = async () => {
+    if (!selectedBranch) return
+    
     try {
-      const res = await api.get("/inventory/rawmaterials/")
+      const url = `/inventory/rawmaterials/?branch_id=${selectedBranch}`
+      const res = await api.get(url)
       setMaterials(res.data)
     } catch (err) {
       console.error("Error fetching materials:", err)

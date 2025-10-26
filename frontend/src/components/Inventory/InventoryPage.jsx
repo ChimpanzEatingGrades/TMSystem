@@ -25,6 +25,8 @@ import ErrorBoundary from "./ErrorBoundary"
 
 export default function Inventory() {
   const [materials, setMaterials] = useState([])
+  const [branches, setBranches] = useState([])
+  const [selectedBranch, setSelectedBranch] = useState(null)
   const [name, setName] = useState("")
   const [quantity, setQuantity] = useState("")
   const [unit, setUnit] = useState("kg")
@@ -41,15 +43,41 @@ export default function Inventory() {
 
   // Load initial data
   useEffect(() => {
-    fetchMaterials()
+    fetchBranches()
     fetchUnits()
-    fetchPurchaseOrders()
   }, [])
 
+  // Load branch-specific data when branch changes
+  useEffect(() => {
+    if (selectedBranch) {
+      fetchMaterials()
+      fetchPurchaseOrders()
+    } else {
+      setMaterials([])
+      setPurchaseOrders([])
+    }
+  }, [selectedBranch])
+
   // Fetch functions
-  const fetchMaterials = async () => {
+  const fetchBranches = async () => {
     try {
-      const res = await api.get("/inventory/rawmaterials/")
+      const res = await api.get("/inventory/branches/")
+      setBranches(res.data)
+      // Auto-select first branch if available
+      if (res.data.length > 0 && !selectedBranch) {
+        setSelectedBranch(res.data[0].id)
+      }
+    } catch (err) {
+      console.error("Error fetching branches:", err)
+      setError("Failed to fetch branches. Please login first.")
+    }
+  }
+
+  const fetchMaterials = async () => {
+    if (!selectedBranch) return
+    
+    try {
+      const res = await api.get(`/inventory/branch-quantities/by_branch/?branch_id=${selectedBranch}`)
       console.log("Fetched materials:", res.data) // Debug log to check data
       setMaterials(res.data)
     } catch (err) {
@@ -68,8 +96,10 @@ export default function Inventory() {
   }
 
   const fetchPurchaseOrders = async () => {
+    if (!selectedBranch) return
+    
     try {
-      const res = await api.get("/inventory/purchase-orders/")
+      const res = await api.get(`/inventory/purchase-orders/?branch_id=${selectedBranch}`)
       setPurchaseOrders(res.data)
     } catch (err) {
       console.error(err)
@@ -192,33 +222,69 @@ export default function Inventory() {
         <Navbar />
 
         <div className="max-w-full mx-auto px-4 py-8">
-          <div className="flex flex-col md:flex-row md:items-center justify-between mb-8">
-            <div>
-              <h1 className="text-3xl font-bold text-black mb-2 flex items-center gap-3">
-                <Package className="text-[#FFC601]" size={32} />
-                Inventory Management
-              </h1>
-              <p className="text-gray-600">Manage your raw materials, stock levels, and purchase orders</p>
+          <div className="mb-8">
+            <div className="flex flex-col md:flex-row md:items-center justify-between mb-6">
+              <div>
+                <h1 className="text-3xl font-bold text-black mb-2 flex items-center gap-3">
+                  <Package className="text-[#FFC601]" size={32} />
+                  Inventory Management
+                </h1>
+                <p className="text-gray-600">Manage your raw materials, stock levels, and purchase orders</p>
+              </div>
             </div>
 
-            <div className="flex flex-wrap gap-3 mt-4 md:mt-0">
+            {/* Branch Selector */}
+            <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6 mb-6">
+              <label className="block text-sm font-semibold text-gray-700 mb-3">
+                📍 Select Branch to View Inventory
+              </label>
+              <select
+                value={selectedBranch || ""}
+                onChange={(e) => setSelectedBranch(e.target.value)}
+                className="w-full md:w-1/2 px-4 py-3 border-2 border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg font-medium"
+              >
+                <option value="">-- Select a Branch --</option>
+                {branches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </option>
+                ))}
+              </select>
+              {!selectedBranch && (
+                <p className="mt-3 text-sm text-red-600 font-medium flex items-center gap-2">
+                  <AlertTriangle size={16} />
+                  Please select a branch to view inventory and perform operations
+                </p>
+              )}
+              {selectedBranch && (
+                <p className="mt-3 text-sm text-green-700 font-medium">
+                  ✓ Viewing inventory for: {branches.find(b => b.id == selectedBranch)?.name}
+                </p>
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-wrap gap-3">
               <button
                 onClick={() => setShowPurchaseModal(true)}
-                className="bg-green-500 hover:bg-green-600 text-white font-semibold px-4 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2 shadow-sm"
+                disabled={!selectedBranch}
+                className="bg-green-500 hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold px-4 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2 shadow-sm"
               >
                 <ShoppingCart size={18} />
                 Purchase Order
               </button>
               <button
                 onClick={() => setShowStockOutModal(true)}
-                className="bg-red-500 hover:bg-red-600 text-white font-semibold px-4 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2 shadow-sm"
+                disabled={!selectedBranch}
+                className="bg-red-500 hover:bg-red-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold px-4 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2 shadow-sm"
               >
                 <Minus size={18} />
                 Stock Out
               </button>
               <button
                 onClick={() => setShowStockHistory(!showStockHistory)}
-                className="bg-purple-500 hover:bg-purple-600 text-white font-semibold px-4 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2 shadow-sm"
+                disabled={!selectedBranch}
+                className="bg-purple-500 hover:bg-purple-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold px-4 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2 shadow-sm"
               >
                 <History size={18} />
                 {showStockHistory ? "Hide" : "Show"} History
@@ -232,7 +298,8 @@ export default function Inventory() {
               </button>
               <button
                 onClick={() => setShowClearInventoryModal(true)}
-                className="bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2 shadow-sm"
+                disabled={!selectedBranch}
+                className="bg-red-600 hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold px-4 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2 shadow-sm"
               >
                 <Trash2 size={18} />
                 Clear All
@@ -247,6 +314,15 @@ export default function Inventory() {
             </div>
           )}
 
+          {!selectedBranch && (
+            <div className="bg-white rounded-xl border-2 border-gray-300 p-12 mb-8 shadow-sm text-center">
+              <Package size={64} className="mx-auto mb-4 text-gray-300" />
+              <h2 className="text-2xl font-semibold text-gray-700 mb-2">No Branch Selected</h2>
+              <p className="text-gray-500">Please select a branch above to view and manage inventory</p>
+            </div>
+          )}
+
+          {selectedBranch && (
           <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8 shadow-sm">
             <h2 className="text-xl font-semibold text-black mb-4 flex items-center gap-2">
               <Plus className="text-[#FFC601]" size={24} />
@@ -303,8 +379,10 @@ export default function Inventory() {
               </div>
             </form>
           </div>
+          )}
 
           {/* Current Inventory - Full Width */}
+          {selectedBranch && (
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-8">
             <div className="p-6 border-b border-gray-200">
               <h2 className="text-xl font-semibold text-black flex items-center gap-2">
@@ -364,7 +442,7 @@ export default function Inventory() {
                                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#FFC601] focus:border-transparent"
                               />
                             ) : (
-                              <span className="font-medium text-gray-900">{mat.name}</span>
+                              <span className="font-medium text-gray-900">{mat.raw_material_name || mat.name}</span>
                             )}
                           </td>
                           <td className="px-6 py-4">
@@ -393,11 +471,11 @@ export default function Inventory() {
                                     <option key={u.id} value={u.abbreviation}>
                                       {u.abbreviation}
                                     </option>
-                                  ))}
+                                  ))
                               </select>
                             ) : (
                               <span className="text-gray-600 font-mono text-sm bg-gray-100 px-2 py-1 rounded">
-                                {mat.unit}
+                                {mat.raw_material_unit}
                               </span>
                             )}
                           </td>
@@ -488,6 +566,7 @@ export default function Inventory() {
               </div>
             )}
           </div>
+          )}
 
           {/* Stock History - Full Width */}
           {showStockHistory && (
@@ -504,12 +583,14 @@ export default function Inventory() {
             isOpen={showPurchaseModal}
             onClose={() => setShowPurchaseModal(false)}
             onSuccess={handlePurchaseSuccess}
+            selectedBranch={selectedBranch}
           />
 
           <StockOutModal
             isOpen={showStockOutModal}
             onClose={() => setShowStockOutModal(false)}
             onSuccess={handleStockOutSuccess}
+            selectedBranch={selectedBranch}
           />
 
           <UnitManagementModal

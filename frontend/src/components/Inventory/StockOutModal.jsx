@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Minus, Package, AlertTriangle, X } from "lucide-react"
 import api from "../../api"
 
-const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
+const StockOutModal = ({ isOpen, onClose, onSuccess, selectedBranch }) => {
   const [materials, setMaterials] = useState([])
   const [selectedMaterial, setSelectedMaterial] = useState("")
   const [quantity, setQuantity] = useState("")
@@ -15,17 +15,30 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
   const [forceExpired, setForceExpired] = useState(false)
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && selectedBranch) {
       fetchAvailableMaterials()
       setExpiredBatchesInfo([])
       setForceExpired(false)
     }
-  }, [isOpen])
+  }, [isOpen, selectedBranch])
 
   const fetchAvailableMaterials = async () => {
+    if (!selectedBranch) return
+    
     try {
-      const res = await api.get("/inventory/stock-out/available_materials/")
-      setMaterials(res.data)
+      // Fetch materials for the selected branch
+      const res = await api.get(`/inventory/branch-quantities/by_branch/?branch_id=${selectedBranch}`)
+      // Filter out materials with 0 quantity
+      const availableMaterials = res.data
+        .filter(m => m.quantity > 0)
+        .map(m => ({
+          id: m.raw_material,
+          name: m.raw_material_name,
+          quantity: m.quantity,
+          unit: m.raw_material_unit,
+          is_low_stock: m.is_low_stock
+        }))
+      setMaterials(availableMaterials)
     } catch (err) {
       console.error("Error fetching materials:", err)
       setError("Failed to fetch available materials")
@@ -49,6 +62,7 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
 
       const payload = {
         raw_material_id: Number.parseInt(selectedMaterial),
+        branch_id: selectedBranch,
         quantity: Number.parseFloat(quantity),
         notes: notes.trim() || undefined,
         force_expired: forceExpired,

@@ -5,7 +5,7 @@ import { X, Plus, Minus, ShoppingCart, Package, Calendar, FileText, AlertTriangl
 import { getUnits, getRawMaterials } from "../../api/inventoryAPI" // ✅ proper imports
 import { ACCESS_TOKEN } from "../../constants"
 
-const PurchaseOrderModal = ({ isOpen, onClose, onSuccess }) => {
+const PurchaseOrderModal = ({ isOpen, onClose, onSuccess, selectedBranch }) => {
   const [purchaseDate, setPurchaseDate] = useState("")
   const [notes, setNotes] = useState("")
   const [items, setItems] = useState([
@@ -139,6 +139,7 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSuccess }) => {
         },
         body: JSON.stringify({
           purchase_date: purchaseDate,
+          branch: selectedBranch,
           notes,
           items: itemsWithUnitIds,
         }),

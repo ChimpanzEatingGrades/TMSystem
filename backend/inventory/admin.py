@@ -5,8 +5,12 @@ from .models import MenuItemBranchAvailability
 
 @admin.register(RawMaterial)
 class RawMaterialAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "unit", "quantity")
+    list_display = ("id", "name", "unit", "total_quantity")
     search_fields = ("name",)
+
+    def total_quantity(self, obj):
+        return obj.get_total_quantity()
+    total_quantity.short_description = "Total Qty"
 
 
 class RecipeItemInline(admin.TabularInline):

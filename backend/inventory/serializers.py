@@ -1,6 +1,7 @@
 # inventory/serializers.py
 from django.db import transaction
 from rest_framework import serializers
+from django.db.models import Sum
 from decimal import Decimal
 from django.utils import timezone
 from .models import (
@@ -18,6 +19,7 @@ from .models import (
     StockAlert,
     StockBatch,
     Branch,
+    BranchQuantity,
     MenuItemBranchAvailability
 )
 
@@ -26,10 +28,25 @@ class UnitOfMeasurementSerializer(serializers.ModelSerializer):
         model = UnitOfMeasurement
         fields = "__all__"
 
-# RawMaterial (read/write)
-class RawMaterialSerializer(serializers.ModelSerializer):
+# BranchQuantity serializer
+class BranchQuantitySerializer(serializers.ModelSerializer):
+    branch_name = serializers.CharField(source='branch.name', read_only=True)
+    raw_material_name = serializers.CharField(source='raw_material.name', read_only=True)
+    raw_material_unit = serializers.CharField(source='raw_material.unit', read_only=True)
     is_low_stock = serializers.BooleanField(read_only=True)
     needs_reorder = serializers.BooleanField(read_only=True)
+    
+    class Meta:
+        model = BranchQuantity
+        fields = [
+            "id", "branch", "branch_name", "raw_material", "raw_material_name",
+            "raw_material_unit", "quantity", "is_low_stock", "needs_reorder",
+            "created_at", "updated_at"
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+# RawMaterial (read/write)
+class RawMaterialSerializer(serializers.ModelSerializer):
     expired_batches_count = serializers.SerializerMethodField()
     expiring_soon_count = serializers.SerializerMethodField()
     oldest_batch_expiry = serializers.SerializerMethodField()
@@ -37,15 +54,20 @@ class RawMaterialSerializer(serializers.ModelSerializer):
     is_raw_material = serializers.BooleanField(read_only=True)
     is_processed = serializers.BooleanField(read_only=True)
     is_supplies = serializers.BooleanField(read_only=True)
+    branch_quantities = BranchQuantitySerializer(many=True, read_only=True)
+    total_quantity = serializers.SerializerMethodField()
+    quantity = serializers.DecimalField(max_digits=12, decimal_places=3, read_only=True, required=False)
+    is_low_stock = serializers.BooleanField(read_only=True, required=False)
     
     class Meta:
         model = RawMaterial
         fields = [
             "id", "name", "unit", "material_type", "material_type_display", 
-            "quantity", "created_at", "updated_at",
+            "created_at", "updated_at",
             "minimum_threshold", "reorder_level", "shelf_life_days",
-            "is_low_stock", "needs_reorder", "is_raw_material", "is_processed", "is_supplies",
-            "expired_batches_count", "expiring_soon_count", "oldest_batch_expiry"
+            "is_raw_material", "is_processed", "is_supplies",
+            "expired_batches_count", "expiring_soon_count", "oldest_batch_expiry",
+            "branch_quantities", "total_quantity", "quantity", "is_low_stock"
         ]
     
     def get_expired_batches_count(self, obj):
@@ -57,6 +79,9 @@ class RawMaterialSerializer(serializers.ModelSerializer):
     def get_oldest_batch_expiry(self, obj):
         oldest = obj.batches.filter(quantity__gt=0).order_by('expiry_date').first()
         return oldest.expiry_date if oldest else None
+    
+    def get_total_quantity(self, obj):
+        return obj.get_total_quantity()
 
     def validate_name(self, value: str):
         # Enforce case-insensitive uniqueness for name
@@ -252,7 +277,7 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = PurchaseOrder
-        fields = ['purchase_date', 'notes', 'items']
+        fields = ['purchase_date', 'branch', 'notes', 'items']
     
     def to_representation(self, instance):
         return PurchaseOrderSerializer(instance).data
@@ -287,8 +312,11 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
     
     def update_inventory(self, purchase_order):
         from datetime import timedelta
-        from .models import StockBatch
+        from .models import StockBatch, BranchQuantity
         from inventory.views import RawMaterialViewSet
+        
+        if not purchase_order.branch:
+            raise serializers.ValidationError("Purchase order must have a branch specified")
         
         for item in purchase_order.items.all():
             print(f"Processing item: {item.name}, Quantity: {item.quantity}")
@@ -305,11 +333,17 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
                 material = RawMaterial.objects.create(
                     name=item.name.strip(),
                     unit=item.unit.abbreviation,
-                    quantity=0,
                     shelf_life_days=item_shelf_life,
                     material_type=item_material_type
                 )
                 print(f"Created new material: {material.name}")
+            
+            # Get or create branch quantity
+            branch_qty, created = BranchQuantity.objects.get_or_create(
+                branch=purchase_order.branch,
+                raw_material=material,
+                defaults={'quantity': Decimal('0.000')}
+            )
             
             if item_shelf_life is not None:
                 batch_shelf_life = item_shelf_life
@@ -323,17 +357,18 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
                     expiry_date=expiry_date
                 )
                 print(f"Created batch: {batch.quantity} {material.unit}")
-                notes_text = f"Stock in from Purchase Order #{purchase_order.id}"
+                notes_text = f"Stock in from Purchase Order #{purchase_order.id} for {purchase_order.branch.name}"
             else:
                 print(f"Non-perishable item: {material.name}")
-                notes_text = f"Stock in from Purchase Order #{purchase_order.id} (Supply)"
+                notes_text = f"Stock in from Purchase Order #{purchase_order.id} (Supply) for {purchase_order.branch.name}"
             
-            material.quantity += item.quantity
-            material.save()
+            # Update branch quantity
+            branch_qty.quantity += item.quantity
+            branch_qty.save()
             
-            # Check and create alerts after quantity update
-            viewset = RawMaterialViewSet()
-            viewset.check_and_create_alerts(material)
+            # Check and create alerts after quantity update (if needed, update this method)
+            # viewset = RawMaterialViewSet()
+            # viewset.check_and_create_alerts(material, branch_qty)
             
             StockTransaction.objects.create(
                 transaction_type='stock_in',
@@ -345,8 +380,9 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
                 performed_by_name=purchase_order.encoded_by_name
             )
             
-            print(f"Updated inventory: {material.name} - Added {item.quantity}")
-            print(f"Checked and created alerts for {material.name}")
+            print(f"Updated inventory for {purchase_order.branch.name}: {material.name} - Added {item.quantity}")
+            print(f"Branch quantity: {branch_qty.quantity} {material.unit}")
+
 
 class StockTransactionSerializer(serializers.ModelSerializer):
     raw_material_name = serializers.CharField(source='raw_material.name', read_only=True)
@@ -361,9 +397,11 @@ class StockTransactionSerializer(serializers.ModelSerializer):
 
 class StockOutSerializer(serializers.Serializer):
     raw_material_id = serializers.IntegerField()
+    branch_id = serializers.IntegerField()
     quantity = serializers.DecimalField(max_digits=12, decimal_places=3, min_value=Decimal('0.0001'))
     notes = serializers.CharField(required=False, allow_blank=True)
-    
+    force_expired = serializers.BooleanField(required=False, default=False)
+
     def validate_raw_material_id(self, value):
         try:
             material = RawMaterial.objects.get(id=value)
@@ -378,10 +416,22 @@ class StockOutSerializer(serializers.Serializer):
     
     def validate(self, data):
         material = RawMaterial.objects.get(id=data['raw_material_id'])
-        if material.quantity < data['quantity']:
-            raise serializers.ValidationError(
-                f"Insufficient stock. Available: {material.quantity} {material.unit}, Requested: {data['quantity']} {material.unit}"
-            )
+        quantity_to_stock_out = data['quantity']
+        force_expired = data.get('force_expired', False)
+
+        if force_expired:
+            # When forcing expired, validate against the total quantity of expired batches.
+            expired_quantity = material.get_expired_batches().aggregate(
+                total=Sum('quantity')
+            )['total'] or Decimal('0')
+            
+            if quantity_to_stock_out > expired_quantity:
+                raise serializers.ValidationError({
+                    'quantity': f"Cannot stock out more than the total expired quantity. Expired: {expired_quantity} {material.unit}, Requested: {quantity_to_stock_out} {material.unit}"
+                })
+        # For regular stock-outs, we let the view handle the logic.
+        # This allows the view to raise a more specific error if usable stock is insufficient,
+        # which can then suggest stocking out expired items, as the frontend expects.
         return data
 
 
@@ -497,21 +547,36 @@ class CustomerOrderCreateSerializer(serializers.ModelSerializer):
         return order
     
     def update_inventory(self, order):
+        if not order.branch:
+            raise serializers.ValidationError("Order must have a branch specified")
+        
         for item in order.items.all():
             if item.menu_item.recipe:
                 for recipe_item in item.menu_item.recipe.items.all():
                     required_quantity = (recipe_item.quantity * item.quantity) / item.menu_item.recipe.yield_quantity
                     
                     material = recipe_item.raw_material
-                    if material.quantity < required_quantity:
+                    
+                    # Get branch quantity for this material
+                    try:
+                        branch_qty = BranchQuantity.objects.get(
+                            branch=order.branch,
+                            raw_material=material
+                        )
+                    except BranchQuantity.DoesNotExist:
                         raise serializers.ValidationError(
-                            f"Insufficient stock for {material.name}. "
-                            f"Available: {material.quantity} {material.unit}, "
+                            f"No stock available for {material.name} at {order.branch.name}"
+                        )
+                    
+                    if branch_qty.quantity < required_quantity:
+                        raise serializers.ValidationError(
+                            f"Insufficient stock for {material.name} at {order.branch.name}. "
+                            f"Available: {branch_qty.quantity} {material.unit}, "
                             f"Required: {required_quantity} {material.unit}"
                         )
                     
-                    material.quantity -= required_quantity
-                    material.save()
+                    branch_qty.quantity -= required_quantity
+                    branch_qty.save()
                     
                     StockTransaction.objects.create(
                         transaction_type='stock_out',
@@ -519,7 +584,7 @@ class CustomerOrderCreateSerializer(serializers.ModelSerializer):
                         quantity=required_quantity,
                         unit=material.unit,
                         reference_number=f"ORDER-{order.id}",
-                        notes=f"Stock out for Order #{order.id} - {item.menu_item.name}",
+                        notes=f"Stock out for Order #{order.id} - {item.menu_item.name} at {order.branch.name}",
                         performed_by_name=order.processed_by_name or "System"
                     )
 

@@ -38,25 +38,18 @@ class RawMaterial(models.Model):
         default='raw',
         help_text="Type of material - raw, processed, semi-processed, or supplies"
     )
-    quantity = models.DecimalField(
-        max_digits=12,
-        decimal_places=3,
-        default=Decimal("0.000"),
-        validators=[MinValueValidator(Decimal("0.000"))],
-        help_text="Current stock quantity"
-    )
     # New fields for stock management
     minimum_threshold = models.DecimalField(
         max_digits=12, 
         decimal_places=3, 
         default=10,
-        help_text="Minimum quantity before low stock alert"
+        help_text="Minimum quantity before low stock alert (per branch)"
     )
     reorder_level = models.DecimalField(
         max_digits=12, 
         decimal_places=3, 
         default=20,
-        help_text="Quantity level to trigger reorder"
+        help_text="Quantity level to trigger reorder (per branch)"
     )
     shelf_life_days = models.PositiveIntegerField(
         null=True,  # Allow null for supplies/utensils
@@ -67,7 +60,7 @@ class RawMaterial(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.name} ({self.quantity} {self.unit}) - {self.get_material_type_display()}"
+        return f"{self.name} ({self.unit}) - {self.get_material_type_display()}"
 
     class Meta:
         ordering = ["name"]
@@ -78,15 +71,19 @@ class RawMaterial(models.Model):
             )
         ]
 
-    @property
-    def is_low_stock(self):
-        """Check if stock is below minimum threshold"""
-        return self.quantity <= self.minimum_threshold
+    def get_total_quantity(self):
+        """Get total quantity across all branches"""
+        return self.branch_quantities.aggregate(
+            total=models.Sum('quantity')
+        )['total'] or Decimal('0.000')
     
-    @property
-    def needs_reorder(self):
-        """Check if stock needs reordering"""
-        return self.quantity <= self.reorder_level
+    def get_quantity_for_branch(self, branch):
+        """Get quantity for a specific branch"""
+        try:
+            branch_qty = self.branch_quantities.get(branch=branch)
+            return branch_qty.quantity
+        except:
+            return Decimal('0.000')
     
     @property
     def is_raw_material(self):
@@ -215,6 +212,14 @@ class MenuItem(models.Model):
 class PurchaseOrder(models.Model):
     """Model for purchase orders/tickets"""
     purchase_date = models.DateField()
+    branch = models.ForeignKey(
+        'Branch',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='purchase_orders',
+        help_text="Branch where this purchase order is for"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     notes = models.TextField(blank=True, null=True)
@@ -363,8 +368,47 @@ class Branch(models.Model):
 
     def __str__(self):
         return self.name
-    
 
+
+class BranchQuantity(models.Model):
+    """Model to track raw material quantities per branch"""
+    branch = models.ForeignKey(
+        Branch,
+        on_delete=models.CASCADE,
+        related_name='raw_material_quantities'
+    )
+    raw_material = models.ForeignKey(
+        RawMaterial,
+        on_delete=models.CASCADE,
+        related_name='branch_quantities'
+    )
+    quantity = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        default=Decimal("0.000"),
+        validators=[MinValueValidator(Decimal("0.000"))],
+        help_text="Current stock quantity for this branch"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('branch', 'raw_material')
+        ordering = ['branch__name', 'raw_material__name']
+        verbose_name_plural = 'Branch Quantities'
+
+    def __str__(self):
+        return f"{self.raw_material.name} @ {self.branch.name}: {self.quantity} {self.raw_material.unit}"
+    
+    @property
+    def is_low_stock(self):
+        """Check if stock is below minimum threshold"""
+        return self.quantity <= self.raw_material.minimum_threshold
+    
+    @property
+    def needs_reorder(self):
+        """Check if stock needs reordering"""
+        return self.quantity <= self.raw_material.reorder_level
 
 
 class CustomerOrder(models.Model):
@@ -518,6 +562,7 @@ class StockAlert(models.Model):
     ]
     
     raw_material = models.ForeignKey(RawMaterial, on_delete=models.CASCADE, related_name='alerts')
+    branch = models.ForeignKey('Branch', on_delete=models.CASCADE, related_name='alerts', null=True, blank=True)
     alert_type = models.CharField(max_length=20, choices=ALERT_TYPES)
     status = models.CharField(max_length=20, choices=ALERT_STATUS, default='active')
     message = models.TextField()

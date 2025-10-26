@@ -3,7 +3,7 @@ import { jwtDecode } from 'jwt-decode'
 import api from '../api'
 import { ACCESS_TOKEN } from '../constants'
 
-const PurchaseOrderModal = ({ isOpen, onClose, onSuccess }) => {
+const PurchaseOrderModal = ({ isOpen, onClose, onSuccess, selectedBranch }) => {
   const [purchaseDate, setPurchaseDate] = useState('')
   const [notes, setNotes] = useState('')
   const [items, setItems] = useState([{ name: '', quantity: '', unit: '', unitPrice: '', totalPrice: 0, isNewMaterial: false, selectedMaterial: '', shelfLifeDays: 7, material_type: 'raw' }])
@@ -15,7 +15,7 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSuccess }) => {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && selectedBranch) {
       setPurchaseDate(new Date().toISOString().split('T')[0])
       setNotes('')
       setItems([{ name: '', quantity: '', unit: '', unitPrice: '', totalPrice: 0, isNewMaterial: false, selectedMaterial: '', shelfLifeDays: 7, material_type: 'raw' }])
@@ -23,7 +23,7 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSuccess }) => {
       fetchUnits()
       fetchRawMaterials()
     }
-  }, [isOpen])
+  }, [isOpen, selectedBranch])
 
   const fetchUnits = async () => {
     setLoadingUnits(true)
@@ -41,7 +41,10 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSuccess }) => {
   const fetchRawMaterials = async () => {
     setLoadingMaterials(true)
     try {
-      const res = await api.get('/inventory/rawmaterials/')
+      const url = selectedBranch 
+        ? `/inventory/rawmaterials/?branch_id=${selectedBranch}`
+        : '/inventory/rawmaterials/'
+      const res = await api.get(url)
       setRawMaterials(res.data)
     } catch (err) {
       console.error(err)
@@ -130,6 +133,12 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSuccess }) => {
           unit_price: parseFloat(i.unitPrice),
           total_price: parseFloat(i.totalPrice),
           material_type: i.material_type || 'raw',
+          is_new_material: i.isNewMaterial, // Flag to indicate if this is a new material
+        }
+        
+        // If selecting an existing material, include its ID
+        if (!i.isNewMaterial && i.selectedMaterial) {
+          itemData.raw_material_id = parseInt(i.selectedMaterial)
         }
         
         // Only add shelf_life_days if material is not supplies
@@ -144,10 +153,15 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSuccess }) => {
       const requestData = {
         purchase_date: purchaseDate,
         notes,
-        items: itemsWithUnitIds
+        items: itemsWithUnitIds,
+        branch: selectedBranch
       }
       
-      console.log('Sending purchase order data:', requestData)
+      console.log('=== PURCHASE ORDER SUBMISSION ===')
+      console.log('Branch ID:', selectedBranch)
+      console.log('New materials in this order:', itemsWithUnitIds.filter(i => i.is_new_material).map(i => i.name))
+      console.log('Existing materials in this order:', itemsWithUnitIds.filter(i => !i.is_new_material).map(i => i.name))
+      console.log('Full request data:', requestData)
       console.log('Items detail:', JSON.stringify(itemsWithUnitIds, null, 2))
       
       const res = await api.post('/inventory/purchase-orders/', requestData)
@@ -208,6 +222,12 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSuccess }) => {
           <h2 className="text-2xl font-bold">Create Purchase Order</h2>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-2xl">×</button>
         </div>
+
+        {!selectedBranch && (
+          <div className="bg-yellow-100 border border-yellow-400 text-yellow-800 px-4 py-3 rounded mb-4">
+            ⚠️ Please select a branch from the inventory page before creating a purchase order.
+          </div>
+        )}
 
         {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">{error}</div>}
 

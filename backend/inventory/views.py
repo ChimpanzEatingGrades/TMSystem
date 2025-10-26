@@ -19,6 +19,7 @@ from .models import (
     OrderItem,
     StockAlert,
     Branch,
+    BranchQuantity,
     MenuItemBranchAvailability,
 )
 from .serializers import (
@@ -37,6 +38,7 @@ from .serializers import (
     OrderStatusUpdateSerializer,
     StockAlertSerializer,
     BranchSerializer,
+    BranchQuantitySerializer,
     MenuItemBranchAvailabilitySerializer,
 )
 
@@ -56,6 +58,42 @@ class RawMaterialViewSet(viewsets.ModelViewSet):
     serializer_class = RawMaterialSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     
+    def get_queryset(self):
+        """Filter materials by branch if branch_id is provided"""
+        from django.db.models import Exists, OuterRef, Subquery, DecimalField, Case, When, Value, BooleanField, Q, F
+        
+        queryset = RawMaterial.objects.all()
+        branch_id = self.request.query_params.get('branch_id', None)
+        
+        if branch_id is not None:
+            # Get branch-specific quantity using subquery
+            branch_qty_subquery = BranchQuantity.objects.filter(
+                raw_material=OuterRef('pk'),
+                branch_id=branch_id
+            ).values('quantity')[:1]
+            
+            # Annotate with branch-specific quantity and is_low_stock status
+            queryset = queryset.annotate(
+                quantity=Subquery(branch_qty_subquery, output_field=DecimalField()),
+                is_low_stock=Case(
+                    When(
+                        Q(quantity__lte=F('minimum_threshold')) & Q(quantity__isnull=False),
+                        then=Value(True)
+                    ),
+                    default=Value(False),
+                    output_field=BooleanField()
+                )
+            ).filter(
+                Exists(
+                    BranchQuantity.objects.filter(
+                        raw_material=OuterRef('pk'),
+                        branch_id=branch_id
+                    )
+                )
+            )
+        
+        return queryset
+    
     def perform_create(self, serializer):
         """Create material and check for alerts"""
         material = serializer.save()
@@ -71,100 +109,100 @@ class RawMaterialViewSet(viewsets.ModelViewSet):
         # First, resolve any outdated alerts for this material
         self.resolve_outdated_alerts(material)
         
-        # Then create new alerts if needed
-        # Check for expired batches (not material itself)
+        # Check for expired and expiring batches (these are not branch-specific)
         expired_batches = material.get_expired_batches()
         if expired_batches.exists():
-            StockAlert.objects.get_or_create(
+            StockAlert.objects.update_or_create(
                 raw_material=material,
                 alert_type='expired',
                 status='active',
                 defaults={
                     'message': f'{material.name} has {expired_batches.count()} expired batch(es)',
-                    'current_quantity': material.quantity,
+                    'current_quantity': material.get_total_quantity(),
                 }
             )
         
-        # Check for expiring soon batches (not material itself)
         expiring_soon = material.get_expiring_soon_batches()
         if expiring_soon.exists():
             oldest_expiring = expiring_soon.first()
             if oldest_expiring:
-                StockAlert.objects.get_or_create(
+                StockAlert.objects.update_or_create(
                     raw_material=material,
                     alert_type='expiring_soon',
                     status='active',
                     defaults={
                         'message': f'{material.name} has batch(es) expiring soon (earliest: {oldest_expiring.expiry_date})',
-                        'current_quantity': material.quantity,
+                        'current_quantity': material.get_total_quantity(),
                     }
                 )
         
-        # Check for out of stock
-        if material.quantity <= 0:
-            StockAlert.objects.get_or_create(
+        # Check stock levels for each branch where this material exists
+        for branch_qty in material.branch_quantities.all():
+            branch = branch_qty.branch
+            current_qty = branch_qty.quantity
+            alerts_to_keep = []
+            
+            # Out of stock
+            if current_qty <= 0:
+                alerts_to_keep.append('out_of_stock')
+                StockAlert.objects.update_or_create(
+                    raw_material=material,
+                    branch=branch,
+                    alert_type='out_of_stock',
+                    status='active',
+                    defaults={
+                        'message': f'{material.name} is out of stock at {branch.name}',
+                        'current_quantity': current_qty,
+                        'threshold_value': material.minimum_threshold,
+                    }
+                )
+            
+            # Low stock (below minimum threshold)
+            elif current_qty <= material.minimum_threshold:
+                alerts_to_keep.append('low_stock')
+                StockAlert.objects.update_or_create(
+                    raw_material=material,
+                    branch=branch,
+                    alert_type='low_stock',
+                    status='active',
+                    defaults={
+                        'message': f'{material.name} is running low at {branch.name}. Current: {current_qty} {material.unit}, Minimum: {material.minimum_threshold} {material.unit}',
+                        'current_quantity': current_qty,
+                        'threshold_value': material.minimum_threshold,
+                    }
+                )
+            
+            # Reorder level
+            elif current_qty <= material.reorder_level:
+                alerts_to_keep.append('reorder')
+                StockAlert.objects.update_or_create(
+                    raw_material=material,
+                    branch=branch,
+                    alert_type='reorder',
+                    status='active',
+                    defaults={
+                        'message': f'{material.name} at {branch.name} has reached reorder level. Current: {current_qty} {material.unit}, Reorder Level: {material.reorder_level} {material.unit}',
+                        'current_quantity': current_qty,
+                        'threshold_value': material.reorder_level,
+                    }
+                )
+            
+            # Resolve alerts that should no longer exist for this branch
+            alerts_to_resolve = StockAlert.objects.filter(
                 raw_material=material,
-                alert_type='out_of_stock',
-                status='active',
-                defaults={
-                    'message': f'{material.name} is out of stock',
-                    'current_quantity': material.quantity,
-                    'threshold_value': material.minimum_threshold,
-                }
+                branch=branch,
+                alert_type__in=['out_of_stock', 'low_stock', 'reorder'],
+                status='active'
             )
-        
-        # Check for low stock
-        elif material.is_low_stock:
-            StockAlert.objects.get_or_create(
-                raw_material=material,
-                alert_type='low_stock',
-                status='active',
-                defaults={
-                    'message': f'{material.name} is running low. Current: {material.quantity} {material.unit}, Minimum: {material.minimum_threshold} {material.unit}',
-                    'current_quantity': material.quantity,
-                    'threshold_value': material.minimum_threshold,
-                }
-            )
-        
-        # Check for reorder level
-        elif material.needs_reorder:
-            StockAlert.objects.get_or_create(
-                raw_material=material,
-                alert_type='reorder',
-                status='active',
-                defaults={
-                    'message': f'{material.name} has reached reorder level. Current: {material.quantity} {material.unit}, Reorder Level: {material.reorder_level} {material.unit}',
-                    'current_quantity': material.quantity,
-                    'threshold_value': material.reorder_level,
-                }
-            )
+            if alerts_to_keep:
+                alerts_to_resolve = alerts_to_resolve.exclude(alert_type__in=alerts_to_keep)
+            alerts_to_resolve.update(status='resolved', resolved_at=timezone.now())
     
     def resolve_outdated_alerts(self, material):
         """Resolve alerts that are no longer valid for this material"""
-        # If quantity is above minimum threshold, resolve low_stock alerts
-        if material.quantity > material.minimum_threshold:
-            StockAlert.objects.filter(
-                raw_material=material,
-                alert_type='low_stock',
-                status='active'
-            ).update(status='resolved', resolved_at=timezone.now())
+        # Branch-specific alerts (out_of_stock, low_stock, reorder) are handled in check_and_create_alerts
+        # This method only handles expired/expiring alerts which are not branch-specific
         
-        # If quantity > 0, resolve out_of_stock alerts
-        if material.quantity > 0:
-            StockAlert.objects.filter(
-                raw_material=material,
-                alert_type='out_of_stock',
-                status='active'
-            ).update(status='resolved', resolved_at=timezone.now())
-        
-        # If quantity > reorder_level, resolve reorder alerts
-        if material.quantity > material.reorder_level:
-            StockAlert.objects.filter(
-                raw_material=material,
-                alert_type='reorder',
-                status='active'
-            ).update(status='resolved', resolved_at=timezone.now())
-
         # If there are no more expired batches with quantity, resolve expired alerts
         if not material.get_expired_batches().exists():
             StockAlert.objects.filter(
@@ -183,8 +221,15 @@ class RawMaterialViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def low_stock_items(self, request):
-        """Get all materials with low stock"""
-        low_stock = self.get_queryset().filter(quantity__lte=models.F('minimum_threshold'))
+        """Get all materials with low stock (requires branch_id parameter)"""
+        branch_id = request.query_params.get('branch_id')
+        if not branch_id:
+            return Response(
+                {'error': 'branch_id parameter is required'},
+                status=400
+            )
+        
+        low_stock = self.get_queryset().filter(is_low_stock=True)
         serializer = self.get_serializer(low_stock, many=True)
         return Response(serializer.data)
     
@@ -327,6 +372,17 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
             return [AllowAny()]
         return [IsAuthenticated()]
 
+    def get_queryset(self):
+        """Filter purchase orders by branch if provided"""
+        queryset = super().get_queryset()
+        
+        # Filter by branch if provided
+        branch_id = self.request.query_params.get('branch_id')
+        if branch_id:
+            queryset = queryset.filter(branch_id=branch_id)
+        
+        return queryset
+
     def get_serializer_class(self):
         if self.action == "create":
             return PurchaseOrderCreateSerializer
@@ -435,16 +491,48 @@ class StockOutViewSet(viewsets.ViewSet):
     """ViewSet for stock out operations"""
     permission_classes = [IsAuthenticated]
     
+    @action(detail=False, methods=['get'])
+    def available_materials(self, request):
+        """Get all materials available for stock out, optionally filtered by branch"""
+        branch_id = request.query_params.get('branch_id', None)
+        
+        if branch_id:
+            # Get materials that have quantities in the specified branch
+            branch_quantities = BranchQuantity.objects.filter(
+                branch_id=branch_id,
+                quantity__gt=0  # Only materials with positive quantities
+            ).select_related('raw_material')
+            
+            # Build response with branch-specific quantities
+            materials_data = []
+            for bq in branch_quantities:
+                material = bq.raw_material
+                materials_data.append({
+                    'id': material.id,
+                    'name': material.name,
+                    'quantity': bq.quantity,  # Branch-specific quantity
+                    'unit': material.unit,
+                    'material_type': material.material_type,
+                    'material_type_display': material.get_material_type_display(),
+                })
+            
+            return Response(materials_data, status=status.HTTP_200_OK)
+        else:
+            # Return all materials (fallback)
+            materials = RawMaterial.objects.filter(quantity__gt=0)
+            serializer = RawMaterialSerializer(materials, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+    
     @action(detail=False, methods=['post'])
     def stock_out(self, request):
-        """Process stock out operation"""
+        """Process stock out operation from branch-specific inventory"""
         serializer = StockOutSerializer(data=request.data)
         if serializer.is_valid():
             try:
                 material = RawMaterial.objects.get(id=serializer.validated_data['raw_material_id'])
+                branch_id = serializer.validated_data['branch_id']
                 quantity_needed = serializer.validated_data['quantity']
                 notes = serializer.validated_data.get('notes', '')
-                force_expired = request.data.get('force_expired', False)  # Allow forcing stock-out of expired items
                 
                 # Get the authenticated user
                 if request.user.is_authenticated:
@@ -454,164 +542,44 @@ class StockOutViewSet(viewsets.ViewSet):
                     performed_by_user = None
                     performed_by_name = "System"
                 
-                # Check if material has enough total stock
-                if material.quantity < quantity_needed:
+                # Get branch quantity
+                try:
+                    branch_qty = BranchQuantity.objects.get(
+                        branch_id=branch_id,
+                        raw_material=material
+                    )
+                except BranchQuantity.DoesNotExist:
                     return Response({
-                        'error': f'Insufficient stock. Available: {material.quantity} {material.unit}, Needed: {quantity_needed} {material.unit}'
+                        'error': f'No stock available for {material.name} at this branch'
                     }, status=status.HTTP_400_BAD_REQUEST)
                 
-                # Check if material has batches (perishable tracking)
-                all_batches = material.batches.filter(quantity__gt=0).order_by('expiry_date')
+                # Allow stock out even if it goes negative (for cases where stock was used but not recorded)
+                print(f"[STOCK OUT] Material: {material.name}, Branch Qty Before: {branch_qty.quantity}, Requested: {quantity_needed}")
                 
-                # If no batches exist (supplies/non-perishables), simple deduction
-                if not all_batches.exists():
-                    material.quantity -= quantity_needed
-                    material.save()
-                    
-                    # Recalculate alerts after stock has changed
-                    viewset = RawMaterialViewSet()
-                    viewset.check_and_create_alerts(material)
-                    
-                    stock_transaction = StockTransaction.objects.create(
-                        transaction_type='stock_out',
-                        raw_material=material,
-                        quantity=quantity_needed,
-                        unit=material.unit,
-                        reference_number=f"SO-{StockTransaction.objects.count() + 1}",
-                        notes=notes or f"Stock out - {quantity_needed} {material.unit} (Non-perishable item, no batch tracking)",
-                        performed_by=performed_by_user,
-                        performed_by_name=performed_by_name
-                    )
-                    
-                    return Response({
-                        'message': 'Stock out successful (non-perishable item)',
-                        'transaction': StockTransactionSerializer(stock_transaction).data,
-                        'remaining_stock': material.quantity
-                    }, status=status.HTTP_201_CREATED)
+                # Warn if going negative, but allow it
+                if branch_qty.quantity < quantity_needed:
+                    print(f"[STOCK OUT WARNING] Stock will go negative - Available: {branch_qty.quantity}, Requested: {quantity_needed}")
                 
-                # For items with batches, use FIFO logic
-                remaining_quantity = quantity_needed
-                batches_used = []
-                expired_batches_found = []
+                # Deduct from branch quantity (allows negative values)
+                branch_qty.quantity -= quantity_needed
+                branch_qty.save()
                 
-                # Determine which batches to use
-                if force_expired:
-                    # Use expired batches when explicitly forced (for disposal)
-                    batches_to_use = all_batches.filter(is_expired=True).order_by('expiry_date')
-                else:
-                    # Use non-expired batches (normal FIFO)
-                    batches_to_use = all_batches.filter(is_expired=False).order_by('expiry_date')
-                    # Track expired batches for warning
-                    expired_batches = all_batches.filter(is_expired=True)
-                    for batch in expired_batches:
-                        expired_batches_found.append({
-                            'batch_id': batch.id,
-                            'quantity': float(batch.quantity),
-                            'expiry_date': str(batch.expiry_date)
-                        })
-                
-                # Process batches using FIFO
-                for batch in batches_to_use:
-                    if remaining_quantity <= 0:
-                        break
-                    
-                    if batch.quantity >= remaining_quantity:
-                        # This batch has enough
-                        batch.quantity -= remaining_quantity
-                        batches_used.append({
-                            'batch_id': batch.id,
-                            'quantity_used': float(remaining_quantity),
-                            'expiry_date': str(batch.expiry_date),
-                            'was_expired': batch.is_expired
-                        })
-                        remaining_quantity = 0
-                        if batch.quantity == 0:
-                            batch.delete()  # Delete empty batch immediately
-                        else:
-                            batch.save()
-                    else:
-                        # Use all of this batch and continue
-                        quantity_from_batch = batch.quantity
-                        batches_used.append({
-                            'batch_id': batch.id,
-                            'quantity_used': float(quantity_from_batch),
-                            'expiry_date': str(batch.expiry_date),
-                            'was_expired': batch.is_expired
-                        })
-                        remaining_quantity -= quantity_from_batch
-                        batch.quantity = 0
-                        batch.delete()  # Delete empty batch immediately
-                
-                # If still insufficient stock after using available batches
-                if remaining_quantity > 0:
-                    if not force_expired and expired_batches_found:
-                        # Suggest using expired batches
-                        return Response({
-                            'error': f'Insufficient non-expired stock. Needed: {quantity_needed} {material.unit}, Available (non-expired): {quantity_needed - remaining_quantity} {material.unit}',
-                            'expired_batches': expired_batches_found,
-                            'suggestion': 'Use force_expired=true to stock out expired batches for disposal'
-                        }, status=status.HTTP_400_BAD_REQUEST)
-                    else:
-                        return Response({
-                            'error': f'Insufficient stock. Needed: {quantity_needed} {material.unit}, Available: {quantity_needed - remaining_quantity} {material.unit}'
-                        }, status=status.HTTP_400_BAD_REQUEST)
-                
-                # Update material total quantity
-                material.quantity -= quantity_needed
-                material.save()
-                
-                # Recalculate alerts after stock has changed
-                viewset = RawMaterialViewSet()
-                viewset.check_and_create_alerts(material)
-                
-                # Create stock transaction with batch details
-                if batches_used:
-                    batch_type = "expired" if force_expired else "FIFO"
-                    batch_details = ', '.join([
-                        f"Batch #{b['batch_id']} ({b['quantity_used']} {material.unit}, {'expired' if b['was_expired'] else 'expires'} {b['expiry_date']})"
-                        for b in batches_used
-                    ])
-                    transaction_notes = notes or f"Stock out - {quantity_needed} {material.unit}. {batch_type} batches used: {batch_details}"
-                else:
-                    transaction_notes = notes or f"Stock out - {quantity_needed} {material.unit}"
-                
+                # Create stock transaction
                 stock_transaction = StockTransaction.objects.create(
                     transaction_type='stock_out',
                     raw_material=material,
                     quantity=quantity_needed,
                     unit=material.unit,
                     reference_number=f"SO-{StockTransaction.objects.count() + 1}",
-                    notes=transaction_notes,
+                    notes=notes or f"Stock out from branch - {quantity_needed} {material.unit}",
                     performed_by=performed_by_user,
                     performed_by_name=performed_by_name
                 )
                 
-                # Create/update alerts for remaining expired batches if any
-                if not force_expired and expired_batches_found:
-                    total_expired = sum(b['quantity'] for b in expired_batches_found)
-                    StockAlert.objects.get_or_create(
-                        raw_material=material,
-                        alert_type='expired',
-                        status='active',
-                        defaults={
-                            'message': f'{material.name} has {len(expired_batches_found)} expired batch(es) totaling {total_expired} {material.unit}. Please stock out for disposal.',
-                            'current_quantity': material.quantity,
-                        }
-                    )
-                elif force_expired and not expired_batches_found:
-                    # Resolve expired alerts if all expired stock is removed
-                    StockAlert.objects.filter(
-                        raw_material=material,
-                        alert_type='expired',
-                        status='active'
-                    ).update(status='resolved', resolved_at=timezone.now())
-                
                 return Response({
-                    'message': f'Stock out successful ({batch_type if batches_used else "non-perishable"})',
+                    'message': 'Stock out successful',
                     'transaction': StockTransactionSerializer(stock_transaction).data,
-                    'remaining_stock': material.quantity,
-                    'batches_used': batches_used,
-                    'expired_batches_remaining': len(expired_batches_found) if not force_expired else 0
+                    'remaining_stock': branch_qty.quantity
                 }, status=status.HTTP_201_CREATED)
                 
             except RawMaterial.DoesNotExist:
@@ -626,13 +594,6 @@ class StockOutViewSet(viewsets.ViewSet):
                 )
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-    @action(detail=False, methods=['get'])
-    def available_materials(self, request):
-        """Get list of materials with available stock"""
-        materials = RawMaterial.objects.filter(quantity__gt=0).order_by('name')
-        serializer = RawMaterialSerializer(materials, many=True)
-        return Response(serializer.data)
 
 
 # -------------------
@@ -1166,52 +1127,79 @@ class StockAlertViewSet(viewsets.ModelViewSet):
                     status='active'
                 ).update(status='resolved', resolved_at=timezone.now())
 
-        # 1. Check all materials for stock levels
-        for material in RawMaterial.objects.all():
+        # 1. Check all branch quantities for stock levels (branch-specific alerts)
+        for branch_qty in BranchQuantity.objects.select_related('raw_material', 'branch').all():
+            material = branch_qty.raw_material
+            branch = branch_qty.branch
+            current_qty = branch_qty.quantity
+            
+            # First, resolve any alerts that should no longer exist for this branch
+            alerts_to_keep = []
+            
             # Out of stock
-            if material.quantity <= 0:
-                alert, created = StockAlert.objects.get_or_create(
+            if current_qty <= 0:
+                alerts_to_keep.append('out_of_stock')
+                alert, created = StockAlert.objects.update_or_create(
                     raw_material=material,
+                    branch=branch,
                     alert_type='out_of_stock',
                     status='active',
                     defaults={
-                        'message': f'{material.name} is out of stock. Please restock immediately.',
-                        'current_quantity': material.quantity,
+                        'message': f'{material.name} is out of stock at {branch.name}. Please restock immediately.',
+                        'current_quantity': current_qty,
                         'threshold_value': material.minimum_threshold,
                     }
                 )
                 if created:
                     alerts_created['out_of_stock'] += 1
             
-            # Low stock
-            elif material.is_low_stock:
-                alert, created = StockAlert.objects.get_or_create(
+            # Low stock (below minimum threshold but not out of stock)
+            elif current_qty <= material.minimum_threshold:
+                alerts_to_keep.append('low_stock')
+                alert, created = StockAlert.objects.update_or_create(
                     raw_material=material,
+                    branch=branch,
                     alert_type='low_stock',
                     status='active',
                     defaults={
-                        'message': f'{material.name} is running low. Current: {material.quantity} {material.unit}, Minimum: {material.minimum_threshold} {material.unit}. Please restock soon.',
-                        'current_quantity': material.quantity,
+                        'message': f'{material.name} is running low at {branch.name}. Current: {current_qty} {material.unit}, Minimum: {material.minimum_threshold} {material.unit}. Please restock soon.',
+                        'current_quantity': current_qty,
                         'threshold_value': material.minimum_threshold,
                     }
                 )
                 if created:
                     alerts_created['low_stock'] += 1
             
-            # Reorder level
-            elif material.needs_reorder:
-                alert, created = StockAlert.objects.get_or_create(
+            # Reorder level (above minimum but at or below reorder level)
+            elif current_qty <= material.reorder_level:
+                alerts_to_keep.append('reorder')
+                alert, created = StockAlert.objects.update_or_create(
                     raw_material=material,
+                    branch=branch,
                     alert_type='reorder',
                     status='active',
                     defaults={
-                        'message': f'{material.name} has reached reorder level. Current: {material.quantity} {material.unit}, Reorder at: {material.reorder_level} {material.unit}. Consider placing a purchase order.',
-                        'current_quantity': material.quantity,
+                        'message': f'{material.name} at {branch.name} has reached reorder level. Current: {current_qty} {material.unit}, Reorder at: {material.reorder_level} {material.unit}. Consider placing a purchase order.',
+                        'current_quantity': current_qty,
                         'threshold_value': material.reorder_level,
                     }
                 )
                 if created:
                     alerts_created['reorder'] += 1
+            
+            # Resolve all stock-level alerts that are no longer valid for this branch
+            alerts_to_resolve = StockAlert.objects.filter(
+                raw_material=material,
+                branch=branch,
+                alert_type__in=['out_of_stock', 'low_stock', 'reorder'],
+                status='active'
+            )
+            
+            # Only resolve alerts not in the alerts_to_keep list
+            if alerts_to_keep:
+                alerts_to_resolve = alerts_to_resolve.exclude(alert_type__in=alerts_to_keep)
+            
+            alerts_to_resolve.update(status='resolved', resolved_at=timezone.now())
         
         # 2. Check for expired batches (with remaining quantity)
         expired_batches = StockBatch.objects.filter(
@@ -1224,13 +1212,13 @@ class StockAlertViewSet(viewsets.ModelViewSet):
             batch.save()
             
             material = batch.raw_material
-            alert, created = StockAlert.objects.get_or_create(
+            alert, created = StockAlert.objects.update_or_create(
                 raw_material=material,
                 alert_type='expired',
                 status='active',
                 defaults={
                     'message': f'{material.name} has expired batch(es). Batch expires: {batch.expiry_date}. Quantity: {batch.quantity} {material.unit}. Remove from stock immediately.',
-                    'current_quantity': material.quantity,
+                    'current_quantity': material.get_total_quantity(),
                 }
             )
             if created:
@@ -1248,13 +1236,13 @@ class StockAlertViewSet(viewsets.ModelViewSet):
             material = batch.raw_material
             days_left = (batch.expiry_date - today).days
             
-            alert, created = StockAlert.objects.get_or_create(
+            alert, created = StockAlert.objects.update_or_create(
                 raw_material=material,
                 alert_type='expiring_soon',
                 status='active',
                 defaults={
                     'message': f'{material.name} batch expiring on {batch.expiry_date} ({days_left} day{"s" if days_left != 1 else ""} left). Quantity: {batch.quantity} {material.unit}. Use soon or plan stock-out.',
-                    'current_quantity': material.quantity,
+                    'current_quantity': material.get_total_quantity(),
                 }
             )
             if created:
@@ -1274,12 +1262,53 @@ class BranchViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
 
-class MenuItemBranchAvailabilityViewSet(viewsets.ModelViewSet):
-    serializer_class = BranchSerializer
-    queryset = MenuItemBranchAvailability.objects.select_related("menu_item", "branch").all()
-    serializer_class = MenuItemBranchAvailabilitySerializer
+class BranchQuantityViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing branch quantities"""
+    queryset = BranchQuantity.objects.select_related('branch', 'raw_material').all()
+    serializer_class = BranchQuantitySerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        
+        # Filter by branch
+        branch_id = self.request.query_params.get('branch_id')
+        if branch_id:
+            queryset = queryset.filter(branch_id=branch_id)
+        
+        # Filter by raw material
+        raw_material_id = self.request.query_params.get('raw_material_id')
+        if raw_material_id:
+            queryset = queryset.filter(raw_material_id=raw_material_id)
+        
+        # Filter for low stock items
+        low_stock = self.request.query_params.get('low_stock')
+        if low_stock == 'true':
+            queryset = [bq for bq in queryset if bq.is_low_stock]
+        
+        return queryset
+    
+    @action(detail=False, methods=['get'])
+    def by_branch(self, request):
+        """Get all quantities for a specific branch"""
+        branch_id = request.query_params.get('branch_id')
+        if not branch_id:
+            return Response(
+                {'error': 'branch_id parameter is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        quantities = self.get_queryset().filter(branch_id=branch_id)
+        serializer = self.get_serializer(quantities, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def low_stock(self, request):
+        """Get all low stock items across all branches"""
+        all_quantities = self.get_queryset()
+        low_stock_items = [bq for bq in all_quantities if bq.is_low_stock]
+        serializer = self.get_serializer(low_stock_items, many=True)
+        return Response(serializer.data)
 
 
 class MenuItemBranchAvailabilityViewSet(viewsets.ModelViewSet):

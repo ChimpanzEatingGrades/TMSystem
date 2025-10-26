@@ -12,6 +12,7 @@ from .views import (
     CustomerOrderViewSet,
     StockAlertViewSet,
     BranchViewSet,
+    BranchQuantityViewSet,
     MenuItemBranchAvailabilityViewSet
 )
 from django.conf import settings
@@ -29,6 +30,7 @@ router.register(r'stock-out', StockOutViewSet, basename='stock-out')
 router.register(r'customer-orders', CustomerOrderViewSet, basename='customer-order')
 router.register(r'stock-alerts', StockAlertViewSet, basename='stock-alert')
 router.register(r'branches', BranchViewSet, basename='branch')
+router.register(r'branch-quantities', BranchQuantityViewSet, basename='branch-quantity')
 router.register(r'menuitem-branch-availability', MenuItemBranchAvailabilityViewSet, basename='menuitem-branch-availability')
 
 urlpatterns = router.urls

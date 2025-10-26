@@ -1,9 +1,7 @@
-import React, { useState, useEffect } from 'react'
-import { jwtDecode } from 'jwt-decode'
+import React, { useState, useEffect, useMemo } from 'react'
 import api from '../api'
-import { ACCESS_TOKEN } from '../constants'
 
-const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
+const StockOutModal = ({ isOpen, onClose, onSuccess, selectedBranch }) => {
   const [materials, setMaterials] = useState([])
   const [selectedMaterial, setSelectedMaterial] = useState('')
   const [quantity, setQuantity] = useState('')
@@ -14,14 +12,17 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
   const [forceExpired, setForceExpired] = useState(false)
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && selectedBranch) {
       fetchAvailableMaterials()
     }
-  }, [isOpen])
+  }, [isOpen, selectedBranch])
 
   const fetchAvailableMaterials = async () => {
     try {
-      const res = await api.get('/inventory/stock-out/available_materials/')
+      const url = selectedBranch 
+        ? `/inventory/stock-out/available_materials/?branch_id=${selectedBranch}`
+        : '/inventory/stock-out/available_materials/'
+      const res = await api.get(url)
       setMaterials(res.data)
     } catch (err) {
       console.error('Error fetching materials:', err)
@@ -40,12 +41,18 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
         throw new Error('Please select a material and enter quantity')
       }
 
-      const res = await api.post('/inventory/stock-out/stock_out/', {
+      const payload = {
         raw_material_id: parseInt(selectedMaterial),
         quantity: parseFloat(quantity),
         notes: notes.trim() || undefined,
         force_expired: forceExpired
-      })
+      }
+      
+      if (selectedBranch) {
+        payload.branch_id = selectedBranch
+      }
+      
+      const res = await api.post('/inventory/stock-out/stock_out/', payload)
 
       console.log('Stock out response:', res.data)
 
@@ -100,6 +107,21 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
 
   const selectedMaterialData = materials.find(m => m.id.toString() === selectedMaterial)
 
+  const totalExpiredQuantity = useMemo(() => 
+    expiredBatches.reduce((sum, batch) => sum + parseFloat(batch.quantity), 0),
+    [expiredBatches]
+  );
+
+  const maxAllowedQuantity = forceExpired && totalExpiredQuantity > 0 
+    ? totalExpiredQuantity 
+    : selectedMaterialData?.quantity;
+
+  const isQuantityInvalid = 
+    selectedMaterialData && 
+    quantity && 
+    maxAllowedQuantity !== undefined &&
+    parseFloat(quantity) > maxAllowedQuantity;
+
   if (!isOpen) return null
 
   return (
@@ -115,6 +137,12 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
             ×
           </button>
         </div>
+
+        {!selectedBranch && (
+          <div className="bg-yellow-100 border border-yellow-400 text-yellow-800 px-4 py-3 rounded mb-4">
+            ⚠️ Please select a branch from the inventory page before performing stock out.
+          </div>
+        )}
 
         {error && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
@@ -191,14 +219,14 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
               className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               step="0.001"
               min="0.001"
-              max={selectedMaterialData?.quantity || undefined}
+              max={maxAllowedQuantity ?? undefined}
               required
               disabled={loading}
               placeholder="Enter quantity to remove"
             />
-            {selectedMaterialData && parseFloat(quantity) > selectedMaterialData.quantity && (
+            {isQuantityInvalid && (
               <p className="text-sm text-red-600 mt-1">
-                Cannot exceed available stock ({selectedMaterialData.quantity} {selectedMaterialData.unit})
+                Cannot exceed available stock ({maxAllowedQuantity} {selectedMaterialData.unit})
               </p>
             )}
           </div>
@@ -248,7 +276,7 @@ const StockOutModal = ({ isOpen, onClose, onSuccess }) => {
             <button
               type="submit"
               className={`px-4 py-2 ${forceExpired ? 'bg-orange-600 hover:bg-orange-700' : 'bg-red-600 hover:bg-red-700'} text-white rounded disabled:opacity-50`}
-              disabled={loading || !selectedMaterial || !quantity || (selectedMaterialData && parseFloat(quantity) > selectedMaterialData.quantity)}
+              disabled={loading || !selectedMaterial || !quantity || isQuantityInvalid}
             >
               {loading ? 'Processing...' : forceExpired ? 'Stock Out Expired' : 'Stock Out'}
             </button>
