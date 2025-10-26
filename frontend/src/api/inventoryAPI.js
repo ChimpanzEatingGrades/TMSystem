@@ -30,7 +30,7 @@ export const deleteRecipe = (id) => api.delete(`/inventory/recipes/${id}/`);
 // export const deleteUnits = (id) => api.delete(`/inventory/units/${id}/`);
 
 // Raw Materials
-export const getRawMaterials = () => api.get("/inventory/rawmaterials/");
+export const getRawMaterials = (params) => api.get("/inventory/rawmaterials/", { params });
 export const createRawMaterial = (data) => api.post("/inventory/rawmaterials/", data);
 export const updateRawMaterial = (id, data) => api.put(`/inventory/rawmaterials/${id}/`, data);
 export const deleteRawMaterial = (id) => api.delete(`/inventory/rawmaterials/${id}/`);
@@ -40,5 +40,11 @@ export const getBranches = () => api.get("/inventory/branches/");
 export const createBranch = (data) => api.post("/inventory/branches/", data);
 export const updateBranch = (id, data) => api.put(`/inventory/branches/${id}/`, data);
 export const deleteBranch = (id) => api.delete(`/inventory/branches/${id}/`);
+
+// Stock Transactions
+export const getStockTransactions = (params) => api.get("/inventory/stock-transactions/", { params });
+
+// Purchase Orders
+export const getPurchaseOrders = (params) => api.get("/inventory/purchase-orders/", { params });
 
 export default api;

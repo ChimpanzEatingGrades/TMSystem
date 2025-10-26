@@ -440,11 +440,12 @@ class OrderItemSerializer(serializers.ModelSerializer):
     menu_item_name = serializers.CharField(source='menu_item.name', read_only=True)
     menu_item_description = serializers.CharField(source='menu_item.description', read_only=True)
     menu_item_picture = serializers.ImageField(source='menu_item.picture', read_only=True)
+    menu_item_recipe_id = serializers.IntegerField(source='menu_item.recipe.id', read_only=True)
     
     class Meta:
         model = OrderItem
         fields = [
-            'id', 'menu_item', 'menu_item_name', 'menu_item_description', 'menu_item_picture',
+            'id', 'menu_item', 'menu_item_name', 'menu_item_description', 'menu_item_picture', 'menu_item_recipe_id',
             'quantity', 'unit_price', 'total_price', 'special_instructions'
         ]
         read_only_fields = ['total_price', 'unit_price']
