@@ -22,6 +22,8 @@ Open a second bash terminal, also from the TMSYSTEM directory:
 
 %npm install jsqr
 
+%npm install react-to-print
+
 %npm run dev
 
 Sample pictures from the website:
