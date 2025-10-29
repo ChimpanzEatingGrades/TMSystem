@@ -2,8 +2,7 @@ import api from "../api";
 
 // Customer Orders API
 export const getCustomerOrders = (params = {}) => {
-  const queryParams = new URLSearchParams(params).toString();
-  return api.get(`/inventory/customer-orders/${queryParams ? `?${queryParams}` : ''}`);
+  return api.get(`/inventory/customer-orders/`, { params });
 };
 
 export const getCustomerOrder = (id) => api.get(`/inventory/customer-orders/${id}/`);

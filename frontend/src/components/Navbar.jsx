@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useNavigate, useLocation } from "react-router-dom";
-import { Menu, X, ChefHat, User, LogOut, Home, Info, ShoppingCart, ClipboardList, Utensils } from "lucide-react";
+import { useNavigate, useLocation } from "react-router-dom"
+import { Menu, X, ChefHat, User, LogOut, Home, Info, ShoppingCart, ClipboardList, Utensils, BarChart3 } from "lucide-react"
 import { ACCESS_TOKEN, REFRESH_TOKEN } from "../constants"
 import NotificationPanel from "./NotificationPanel"
 
@@ -149,7 +149,18 @@ const Navbar = () => {
                 </button>
               )}
 
-              {isAuthenticated && (
+            {isAuthenticated && (
+                <button
+                  onClick={() => handleNavigation("/reports")}
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center space-x-1 ${
+                    isActive("/reports") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
+                  }`}
+                >
+                  <BarChart3 size={16} />
+                  <span>Reports</span>
+                </button>
+              )}
+              {/* {isAuthenticated && (
                 <button
                   onClick={() => handleNavigation("/tasks")}
                   className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center space-x-1 ${
@@ -159,7 +170,7 @@ const Navbar = () => {
                   <User size={16} />
                   <span>Tasks</span>
                 </button>
-              )}
+              )} */}
             </div>
           </div>
 
@@ -181,12 +192,12 @@ const Navbar = () => {
                 >
                   Login
                 </button>
-                <button
+                {/* <button
                   onClick={() => handleNavigation("/register")}
                   className="bg-[#FFC601] hover:bg-yellow-500 text-black px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200"
                 >
                   Register
-                </button>
+                </button> */}
               </div>
             )}
           </div>
@@ -284,6 +295,18 @@ const Navbar = () => {
 
             {isAuthenticated && (
               <button
+                onClick={() => handleNavigation("/reports")}
+                className={`block px-3 py-2 rounded-md text-base font-medium w-full text-left transition-colors duration-200 flex items-center space-x-2 ${
+                  isActive("/reports") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
+                }`}
+              >
+                <BarChart3 size={16} />
+                <span>Reports</span>
+              </button>
+            )}
+
+            {/* {isAuthenticated && (
+              <button
                 onClick={() => handleNavigation("/tasks")}
                 className={`block px-3 py-2 rounded-md text-base font-medium w-full text-left transition-colors duration-200 flex items-center space-x-2 ${
                   isActive("/tasks") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
@@ -292,7 +315,7 @@ const Navbar = () => {
                 <User size={16} />
                 <span>Tasks</span>
               </button>
-            )}
+            )} */}
 
             <div className="border-t border-gray-200 pt-4">
               {isAuthenticated ? (
@@ -311,12 +334,12 @@ const Navbar = () => {
                   >
                     Login
                   </button>
-                  <button
+                  {/* <button
                     onClick={() => handleNavigation("/register")}
                     className="block px-3 py-2 rounded-md text-base font-medium w-full text-left bg-[#FFC601] hover:bg-yellow-500 text-black transition-colors duration-200"
                   >
                     Register
-                  </button>
+                  </button> */}
                 </div>
               )}
             </div>
