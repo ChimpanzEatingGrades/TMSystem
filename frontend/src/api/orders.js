@@ -39,8 +39,8 @@ export const getPendingOrders = () =>
 export const getTodayOrders = () => 
   api.get("/inventory/customer-orders/today/");
 
-export const getOrderStats = () => 
-  api.get("/inventory/customer-orders/stats/");
+export const getOrderStats = (params = {}) => 
+  api.get("/inventory/customer-orders/stats/", { params });
 
 // Order filtering helpers
 export const getOrdersByStatus = (status) => 

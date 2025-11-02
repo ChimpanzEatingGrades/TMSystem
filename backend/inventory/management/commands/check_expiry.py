@@ -58,12 +58,20 @@ class Command(BaseCommand):
         for batch in expiring_soon:
             material = batch.raw_material
             
+            # Calculate total expiring quantity for this material
+            total_expiring = StockBatch.objects.filter(
+                raw_material=material,
+                expiry_date__lte=threshold,
+                expiry_date__gte=today,
+                quantity__gt=0
+            ).aggregate(total=Sum('quantity'))['total'] or 0
+            
             alert, created = StockAlert.objects.get_or_create(
                 raw_material=material,
                 alert_type='expiring_soon',
                 status='active',
                 defaults={
-                    'message': f'{material.name} expiring on {batch.expiry_date} ({batch.days_until_expiry} days)',
+                    'message': f'{material.name}: {total_expiring} {material.unit} expiring soon (earliest: {batch.expiry_date}, {batch.days_until_expiry} days left)',
                     'current_quantity': material.quantity,
                 }
             )

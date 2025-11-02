@@ -308,6 +308,14 @@ class StockTransaction(models.Model):
         on_delete=models.CASCADE, 
         related_name='stock_transactions'
     )
+    branch = models.ForeignKey(
+        'Branch',
+        on_delete=models.CASCADE,
+        related_name='stock_transactions',
+        null=True,
+        blank=True,
+        help_text="Branch where this transaction occurred"
+    )
     quantity = models.DecimalField(
         max_digits=12,
         decimal_places=3,
@@ -344,6 +352,7 @@ class StockTransaction(models.Model):
             models.Index(fields=['raw_material', 'created_at']),
             models.Index(fields=['transaction_type', 'created_at']),
             models.Index(fields=['performed_by', 'created_at']),
+            models.Index(fields=['branch', 'created_at']),
         ]
     
     def __str__(self):

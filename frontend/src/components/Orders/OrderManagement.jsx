@@ -39,7 +39,9 @@ const OrderManagement = () => {
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
+  const [branches, setBranches] = useState([]);
   const [filters, setFilters] = useState({
+    branch_id: '',
     status: '',
     customer_name: '',
     date_from: '',
@@ -83,8 +85,27 @@ const OrderManagement = () => {
   };
 
   useEffect(() => {
-    fetchOrders();
-    fetchStats();
+    // Load branches once
+    const loadBranches = async () => {
+      try {
+        const res = await api.get('/inventory/branches/');
+        setBranches(res.data);
+        // If no branch selected, default to first branch
+        if (!filters.branch_id && res.data?.length) {
+          setFilters(prev => ({ ...prev, branch_id: String(res.data[0].id) }));
+        }
+      } catch (e) {
+        console.error('Failed to load branches', e);
+      }
+    };
+    loadBranches();
+  }, []);
+
+  useEffect(() => {
+    if (filters.branch_id !== undefined) {
+      fetchOrders();
+      fetchStats();
+    }
   }, [filters]);
 
   const fetchOrders = async () => {
@@ -101,7 +122,7 @@ const OrderManagement = () => {
 
   const fetchStats = async () => {
     try {
-      const response = await getOrderStats();
+      const response = await getOrderStats({ branch_id: filters.branch_id || undefined });
       setStats(response.data);
     } catch (error) {
       console.error('Error fetching stats:', error);
@@ -186,12 +207,13 @@ const OrderManagement = () => {
   };
 
   const clearFilters = () => {
-    setFilters({
+    setFilters(prev => ({
+      branch_id: prev.branch_id, // keep current branch selection
       status: '',
       customer_name: '',
       date_from: '',
       date_to: ''
-    });
+    }));
   };
 
   const viewOrderDetails = (order) => {
@@ -323,7 +345,20 @@ const OrderManagement = () => {
             <h3 className="text-lg font-semibold text-gray-900">Filters</h3>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Branch</label>
+              <select
+                value={filters.branch_id}
+                onChange={(e) => handleFilterChange('branch_id', e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+              >
+                <option value="">All Branches</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={String(b.id)}>{b.name}</option>
+                ))}
+              </select>
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Status
