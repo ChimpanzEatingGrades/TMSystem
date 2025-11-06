@@ -15,6 +15,7 @@ import DigitalMenu from "./pages/DigitalMenu"
 import ReportsPage from "./pages/ReportsPage"
 import ShoppingCart from "./pages/ShoppingCart"
 import OrderManagementPage from "./pages/OrderManagementPage"
+import UnauthorizedPage from "./pages/UnauthorizedPage"
 
 function Logout(){
   localStorage.clear()
@@ -37,13 +38,14 @@ function App() {
         <Route path="/logout" element={<Logout />} />
         <Route path="/digital-menu/:branchId" element={<DigitalMenu />} />
         <Route path="/digital-menu" element={<DigitalMenu />} /> 
+        <Route path="/unauthorized" element={<UnauthorizedPage />} />
         <Route path="/shopping-cart" element={<ShoppingCart />} />
         <Route path="/about" element={<About />} />
-        <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>}
+        <Route path="/inventory" element={<ProtectedRoute requiredGroup="manager"><Inventory /></ProtectedRoute>}
         />
-        <Route path="/menu" element={<ProtectedRoute><MenuItemsPage /></ProtectedRoute>} />
-        <Route path="/orders" element={<ProtectedRoute><OrderManagementPage /></ProtectedRoute>} />
-        <Route path="/reports" element={<ProtectedRoute><ReportsPage /></ProtectedRoute>} />
+        <Route path="/menu" element={<ProtectedRoute requiredGroup="manager"><MenuItemsPage /></ProtectedRoute>} />
+        <Route path="/orders" element={<ProtectedRoute requiredGroup="cashier"><OrderManagementPage /></ProtectedRoute>} />
+        <Route path="/reports" element={<ProtectedRoute requiredGroup="manager"><ReportsPage /></ProtectedRoute>} />
         {/* <Route path="/menu/new" element={<ProtectedRoute><MenuFormPage /></ProtectedRoute>} />
         <Route path="/menu/:id/edit" element={<ProtectedRoute><MenuFormPage /></ProtectedRoute>} /> */}
         <Route path="/" element={<LandingPage />} />
