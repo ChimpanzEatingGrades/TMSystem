@@ -3,6 +3,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework.views import APIView
+from django.contrib.auth import authenticate
 from django.db import models
 from django.utils import timezone
 
@@ -1413,4 +1415,32 @@ class BranchQuantityViewSet(viewsets.ModelViewSet):
 class MenuItemBranchAvailabilityViewSet(viewsets.ModelViewSet):
     queryset = MenuItemBranchAvailability.objects.select_related("menu_item", "branch").all()
     serializer_class = MenuItemBranchAvailabilitySerializer
+
+
+class VerifyAdminCredentialsView(APIView):
+    """
+    An endpoint to verify the credentials of a user and check if they
+    belong to the 'manager' group or are a superuser.
+    """
+    permission_classes = [IsAuthenticated] # Requires a user to be logged in to use it
+
+    def post(self, request, *args, **kwargs):
+        username = request.data.get("username")
+        password = request.data.get("password")
+
+        if not username or not password:
+            return Response({"error": "Username and password are required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Authenticate the provided credentials
+        user = authenticate(username=username, password=password)
+
+        if user is not None:
+            # Check if the user is a superuser or in the 'manager' group
+            is_manager = user.groups.filter(name__iexact='manager').exists()
+            if user.is_superuser or is_manager:
+                return Response({"authorized": True}, status=status.HTTP_200_OK)
+            else:
+                return Response({"error": "Insufficient permissions. Manager access required."}, status=status.HTTP_403_FORBIDDEN)
+        else:
+            return Response({"error": "Invalid credentials provided."}, status=status.HTTP_401_UNAUTHORIZED)
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]

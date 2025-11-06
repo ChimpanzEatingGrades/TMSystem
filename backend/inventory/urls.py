@@ -13,7 +13,8 @@ from .views import (
     StockAlertViewSet,
     BranchViewSet,
     BranchQuantityViewSet,
-    MenuItemBranchAvailabilityViewSet
+    MenuItemBranchAvailabilityViewSet,
+    VerifyAdminCredentialsView
 )
 from django.conf import settings
 from django.conf.urls.static import static
@@ -35,3 +36,4 @@ router.register(r'menuitem-branch-availability', MenuItemBranchAvailabilityViewS
 
 urlpatterns = router.urls
 # ...add other urlpatterns as needed...
+urlpatterns += [path("verify-admin/", VerifyAdminCredentialsView.as_view(), name="verify-admin")]

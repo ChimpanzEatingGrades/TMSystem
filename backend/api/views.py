@@ -1,11 +1,13 @@
 from django.shortcuts import render
 from django.contrib.auth.models import User
 from rest_framework import generics, status
+from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from .serializers import UserSerializer, TaskSerializer
 from .models import Task
+from django.contrib.auth import authenticate
 
 
 # ==============================
@@ -87,3 +89,31 @@ def current_user(request):
         "groups": list(user.groups.values_list("name", flat=True)),
     }
     return Response(data, status=status.HTTP_200_OK)
+
+
+class VerifyAdminCredentialsView(APIView):
+    """
+    An endpoint to verify the credentials of a user and check if they
+    belong to the 'manager' group or are a superuser.
+    """
+    permission_classes = [IsAuthenticated] # Requires a user to be logged in to use it
+
+    def post(self, request, *args, **kwargs):
+        username = request.data.get("username")
+        password = request.data.get("password")
+
+        if not username or not password:
+            return Response({"error": "Username and password are required."}, status=400)
+
+        # Authenticate the provided credentials
+        user = authenticate(username=username, password=password)
+
+        if user is not None:
+            # Check if the user is a superuser or in the 'manager' group
+            is_manager = user.groups.filter(name__iexact='manager').exists()
+            if user.is_superuser or is_manager:
+                return Response({"authorized": True}, status=200)
+            else:
+                return Response({"error": "Insufficient permissions. Manager access required."}, status=403)
+        else:
+            return Response({"error": "Invalid credentials provided."}, status=401)

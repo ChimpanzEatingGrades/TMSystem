@@ -3,7 +3,7 @@ import OrderManagement, { CreateOrderModal } from "../components/Orders/OrderMan
 import Navbar from "../components/Navbar";
 import { Plus, QrCode } from "lucide-react";
 import CartQRScanner from "../components/Orders/CartQRScanner";
-import { getMenuItems, getBranches } from "../api/inventoryAPI";
+import { getMenuItems, getBranches, getRawMaterials } from "../api/inventoryAPI";
 import { createCustomerOrder } from "../api/orders";
 
 const OrderManagementPage = () => {

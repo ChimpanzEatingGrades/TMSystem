@@ -10,4 +10,5 @@ urlpatterns = [
     # User registration and info
     path("register/", views.CreateUserView.as_view(), name="user-register"),
     path("user/", views.current_user, name="current-user"),
+    path("verify-admin/", views.VerifyAdminCredentialsView.as_view(), name="verify-admin"),
 ]
