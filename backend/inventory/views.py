@@ -1224,79 +1224,100 @@ class StockAlertViewSet(viewsets.ModelViewSet):
                     status='active'
                 ).update(status='resolved', resolved_at=timezone.now())
 
-        # 1. Check all branch quantities for stock levels (branch-specific alerts)
+        # 1. Check all branch quantities for stock levels - collect data per material
+        materials_out_of_stock = {}
+        materials_low_stock = {}
+        materials_reorder = {}
+        
         for branch_qty in BranchQuantity.objects.select_related('raw_material', 'branch').all():
             material = branch_qty.raw_material
             branch = branch_qty.branch
             current_qty = branch_qty.quantity
             
-            # First, resolve any alerts that should no longer exist for this branch
-            alerts_to_keep = []
-            
-            # Out of stock
+            # Categorize by stock level
             if current_qty <= 0:
-                alerts_to_keep.append('out_of_stock')
-                alert, created = StockAlert.objects.update_or_create(
-                    raw_material=material,
-                    branch=branch,
-                    alert_type='out_of_stock',
-                    status='active',
-                    defaults={
-                        'message': f'{material.name} is out of stock at {branch.name}. Please restock immediately.',
-                        'current_quantity': current_qty,
-                        'threshold_value': material.minimum_threshold,
-                    }
-                )
-                if created:
-                    alerts_created['out_of_stock'] += 1
-            
-            # Low stock (below minimum threshold but not out of stock)
+                if material.id not in materials_out_of_stock:
+                    materials_out_of_stock[material.id] = {'material': material, 'branches': []}
+                materials_out_of_stock[material.id]['branches'].append((branch, current_qty))
             elif current_qty <= material.minimum_threshold:
-                alerts_to_keep.append('low_stock')
-                alert, created = StockAlert.objects.update_or_create(
-                    raw_material=material,
-                    branch=branch,
-                    alert_type='low_stock',
-                    status='active',
-                    defaults={
-                        'message': f'{material.name} is running low at {branch.name}. Current: {current_qty} {material.unit}, Minimum: {material.minimum_threshold} {material.unit}. Please restock soon.',
-                        'current_quantity': current_qty,
-                        'threshold_value': material.minimum_threshold,
-                    }
-                )
-                if created:
-                    alerts_created['low_stock'] += 1
-            
-            # Reorder level (above minimum but at or below reorder level)
+                if material.id not in materials_low_stock:
+                    materials_low_stock[material.id] = {'material': material, 'branches': []}
+                materials_low_stock[material.id]['branches'].append((branch, current_qty))
             elif current_qty <= material.reorder_level:
-                alerts_to_keep.append('reorder')
-                alert, created = StockAlert.objects.update_or_create(
-                    raw_material=material,
-                    branch=branch,
-                    alert_type='reorder',
-                    status='active',
-                    defaults={
-                        'message': f'{material.name} at {branch.name} has reached reorder level. Current: {current_qty} {material.unit}, Reorder at: {material.reorder_level} {material.unit}. Consider placing a purchase order.',
-                        'current_quantity': current_qty,
-                        'threshold_value': material.reorder_level,
-                    }
-                )
-                if created:
-                    alerts_created['reorder'] += 1
+                if material.id not in materials_reorder:
+                    materials_reorder[material.id] = {'material': material, 'branches': []}
+                materials_reorder[material.id]['branches'].append((branch, current_qty))
+        
+        # Create single alert per material for out of stock
+        for material_id, info in materials_out_of_stock.items():
+            material = info['material']
+            branch_details = ', '.join([f'{branch.name} ({qty} {material.unit})' for branch, qty in info['branches']])
+            total_qty = sum([qty for _, qty in info['branches']])
             
-            # Resolve all stock-level alerts that are no longer valid for this branch
-            alerts_to_resolve = StockAlert.objects.filter(
+            alert, created = StockAlert.objects.update_or_create(
                 raw_material=material,
-                branch=branch,
-                alert_type__in=['out_of_stock', 'low_stock', 'reorder'],
-                status='active'
+                branch=None,
+                alert_type='out_of_stock',
+                status='active',
+                defaults={
+                    'message': f'{material.name} is out of stock. Affected branches: {branch_details}. Please restock immediately.',
+                    'current_quantity': total_qty,
+                    'threshold_value': material.minimum_threshold,
+                }
             )
+            if created:
+                alerts_created['out_of_stock'] += 1
+        
+        # Create single alert per material for low stock
+        for material_id, info in materials_low_stock.items():
+            material = info['material']
+            branch_details = ', '.join([f'{branch.name} ({qty} {material.unit})' for branch, qty in info['branches']])
+            total_qty = sum([qty for _, qty in info['branches']])
             
-            # Only resolve alerts not in the alerts_to_keep list
-            if alerts_to_keep:
-                alerts_to_resolve = alerts_to_resolve.exclude(alert_type__in=alerts_to_keep)
+            alert, created = StockAlert.objects.update_or_create(
+                raw_material=material,
+                branch=None,
+                alert_type='low_stock',
+                status='active',
+                defaults={
+                    'message': f'{material.name} is running low. Minimum: {material.minimum_threshold} {material.unit}. Affected branches: {branch_details}. Please restock soon.',
+                    'current_quantity': total_qty,
+                    'threshold_value': material.minimum_threshold,
+                }
+            )
+            if created:
+                alerts_created['low_stock'] += 1
+        
+        # Create single alert per material for reorder level
+        for material_id, info in materials_reorder.items():
+            material = info['material']
+            branch_details = ', '.join([f'{branch.name} ({qty} {material.unit})' for branch, qty in info['branches']])
+            total_qty = sum([qty for _, qty in info['branches']])
             
-            alerts_to_resolve.update(status='resolved', resolved_at=timezone.now())
+            alert, created = StockAlert.objects.update_or_create(
+                raw_material=material,
+                branch=None,
+                alert_type='reorder',
+                status='active',
+                defaults={
+                    'message': f'{material.name} has reached reorder level. Reorder at: {material.reorder_level} {material.unit}. Affected branches: {branch_details}. Consider placing a purchase order.',
+                    'current_quantity': total_qty,
+                    'threshold_value': material.reorder_level,
+                }
+            )
+            if created:
+                alerts_created['reorder'] += 1
+        
+        # Resolve stale stock-level alerts
+        all_materials_with_stock_issues = set(materials_out_of_stock.keys()) | set(materials_low_stock.keys()) | set(materials_reorder.keys())
+        for material in RawMaterial.objects.all():
+            if material.id not in all_materials_with_stock_issues:
+                StockAlert.objects.filter(
+                    raw_material=material,
+                    branch=None,
+                    alert_type__in=['out_of_stock', 'low_stock', 'reorder'],
+                    status='active'
+                ).update(status='resolved', resolved_at=timezone.now())
         
         # 2. Check for expired batches (with remaining quantity)
         expired_batches = StockBatch.objects.filter(
@@ -1304,22 +1325,48 @@ class StockAlertViewSet(viewsets.ModelViewSet):
             quantity__gt=0
         ).select_related('raw_material')
         
+        materials_with_expired = set()
         for batch in expired_batches:
             batch.is_expired = True
             batch.save()
-            
-            material = batch.raw_material
-            alert, created = StockAlert.objects.update_or_create(
+            materials_with_expired.add(batch.raw_material.id)
+        
+        # Create single alert per material showing all affected branches
+        for material_id in materials_with_expired:
+            material = RawMaterial.objects.get(id=material_id)
+            from django.db.models import Sum
+            total_expired = StockBatch.objects.filter(
                 raw_material=material,
-                alert_type='expired',
-                status='active',
-                defaults={
-                    'message': f'{material.name} has expired batch(es). Batch expires: {batch.expiry_date}. Quantity: {batch.quantity} {material.unit}. Remove from stock immediately.',
-                    'current_quantity': material.get_total_quantity(),
-                }
-            )
-            if created:
-                alerts_created['expired'] += 1
+                is_expired=True,
+                quantity__gt=0
+            ).aggregate(total=Sum('quantity'))['total'] or Decimal('0')
+            
+            # Get all branches that have this material in stock
+            branches_with_stock = BranchQuantity.objects.filter(
+                raw_material=material,
+                quantity__gt=0
+            ).select_related('branch')
+            
+            # Build message with all branches
+            if branches_with_stock.count() > 0:
+                branch_details = ', '.join([
+                    f'{bq.branch.name} ({bq.quantity} {material.unit})'
+                    for bq in branches_with_stock
+                ])
+                
+                alert, created = StockAlert.objects.update_or_create(
+                    raw_material=material,
+                    branch=None,  # No specific branch - applies to all
+                    alert_type='expired',
+                    status='active',
+                    defaults={
+                        'message': f'{material.name} has expired batches. Total expired: {total_expired} {material.unit}. Affected branches: {branch_details}. Remove from stock immediately.',
+                        'current_quantity': total_expired,
+                    }
+                )
+                
+                if created:
+                    alerts_created['expired'] += 1
         
         # 3. Check for expiring soon (within 2 days, with remaining quantity)
         threshold = today + timedelta(days=2)
@@ -1329,25 +1376,52 @@ class StockAlertViewSet(viewsets.ModelViewSet):
             quantity__gt=0
         ).select_related('raw_material')
         
+        materials_expiring = {}
         for batch in expiring_soon:
             material = batch.raw_material
-            days_left = (batch.expiry_date - today).days
-            
-            # Calculate total expiring quantity for this material
-            from django.db.models import Sum
-            expiring_qty = expiring_soon.filter(raw_material=material).aggregate(total=Sum('quantity'))['total'] or Decimal('0')
-            
-            alert, created = StockAlert.objects.update_or_create(
-                raw_material=material,
-                alert_type='expiring_soon',
-                status='active',
-                defaults={
-                    'message': f'{material.name}: {expiring_qty} {material.unit} expiring soon (earliest: {batch.expiry_date}, {days_left} day{"s" if days_left != 1 else ""} left). Use soon or plan stock-out.',
-                    'current_quantity': material.get_total_quantity(),
+            if material.id not in materials_expiring:
+                materials_expiring[material.id] = {
+                    'material': material,
+                    'earliest_date': batch.expiry_date,
+                    'total_qty': Decimal('0'),
+                    'days_left': batch.days_until_expiry
                 }
-            )
-            if created:
-                alerts_created['expiring_soon'] += 1
+            materials_expiring[material.id]['total_qty'] += batch.quantity
+            if batch.expiry_date < materials_expiring[material.id]['earliest_date']:
+                materials_expiring[material.id]['earliest_date'] = batch.expiry_date
+                materials_expiring[material.id]['days_left'] = batch.days_until_expiry
+        
+        # Create single alert per material showing all affected branches
+        for material_id, info in materials_expiring.items():
+            material = info['material']
+            earliest_date = info['earliest_date']
+            total_expiring = info['total_qty']
+            days_left = info['days_left']
+            
+            # Get all branches that have this material in stock
+            branches_with_stock = BranchQuantity.objects.filter(
+                raw_material=material,
+                quantity__gt=0
+            ).select_related('branch')
+            
+            if branches_with_stock.count() > 0:
+                branch_details = ', '.join([
+                    f'{bq.branch.name} ({bq.quantity} {material.unit})'
+                    for bq in branches_with_stock
+                ])
+                
+                alert, created = StockAlert.objects.update_or_create(
+                    raw_material=material,
+                    branch=None,  # No specific branch - applies to all
+                    alert_type='expiring_soon',
+                    status='active',
+                    defaults={
+                        'message': f'{material.name}: {total_expiring} {material.unit} expiring soon (earliest: {earliest_date}, {days_left} day{"s" if days_left != 1 else ""} left). Affected branches: {branch_details}. Use soon or plan stock-out.',
+                        'current_quantity': total_expiring,
+                    }
+                )
+                if created:
+                    alerts_created['expiring_soon'] += 1
         
         return Response({
             'message': 'Automatic stock check completed',

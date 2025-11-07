@@ -614,6 +614,7 @@ class StockAlertSerializer(serializers.ModelSerializer):
     alert_type_display = serializers.CharField(source='get_alert_type_display', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     acknowledged_by_username = serializers.CharField(source='acknowledged_by.username', read_only=True)
+    branch_name = serializers.CharField(source='branch.name', read_only=True)
     
     class Meta:
         model = StockAlert

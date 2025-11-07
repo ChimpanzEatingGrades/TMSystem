@@ -243,9 +243,16 @@ const NotificationPanel = () => {
                         
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-1">
-                            <h3 className="font-semibold text-gray-900 text-sm">
-                              {notification.raw_material_name}
-                            </h3>
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-semibold text-gray-900 text-sm">
+                                {notification.raw_material_name}
+                              </h3>
+                              {notification.branch_name && (
+                                <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium">
+                                  @ {notification.branch_name}
+                                </span>
+                              )}
+                            </div>
                             <button
                               onClick={() => setExpanded(expanded === notification.id ? null : notification.id)}
                               className="text-gray-400 hover:text-gray-600"
