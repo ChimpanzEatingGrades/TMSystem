@@ -1,20 +1,26 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useNavigate, useLocation } from "react-router-dom"
-import { Menu, X, ChefHat, User, LogOut, Home, Info, ShoppingCart, ClipboardList, Utensils, BarChart3 } from "lucide-react"
-import { ACCESS_TOKEN, REFRESH_TOKEN } from "../constants"
-import NotificationPanel from "./NotificationPanel"
+import { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import {
+  Menu, X, ChefHat, LogOut, Home, Info, ShoppingCart, ClipboardList, Utensils, BarChart3, Boxes
+} from "lucide-react";
+import { ACCESS_TOKEN, REFRESH_TOKEN } from "../constants";
+import { jwtDecode } from "jwt-decode";
+import api from "../api";
+import NotificationPanel from "./NotificationPanel";
 
 const Navbar = () => {
-  const [isOpen, setIsOpen] = useState(false)
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isOpen, setIsOpen] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userGroups, setUserGroups] = useState([]);
+  const [isSuperuser, setIsSuperuser] = useState(false);
   const [menuLink, setMenuLink] = useState("/digital-menu");
-  const navigate = useNavigate()
-  const location = useLocation()
+  const navigate = useNavigate();
+  const location = useLocation();
 
+  // Determine the digital menu link
   useEffect(() => {
-    // This effect runs on the client side and can access localStorage
     const storedOrder = localStorage.getItem("customer_order");
     if (storedOrder) {
       const order = JSON.parse(storedOrder);
@@ -22,46 +28,117 @@ const Navbar = () => {
         setMenuLink(`/digital-menu/${order.branch}`);
       }
     }
-  }, [location]); // Re-check on location change in case it's cleared
+  }, [location]);
 
+  // Check authentication and fetch user info
   useEffect(() => {
-    const token = localStorage.getItem(ACCESS_TOKEN)
-    setIsAuthenticated(!!token)
-  }, [location])
+    const token = localStorage.getItem(ACCESS_TOKEN);
+    setIsAuthenticated(!!token);
+
+    if (token) {
+      try {
+        const decoded = jwtDecode(token);
+        if (decoded.groups || decoded.is_superuser !== undefined) {
+          setUserGroups(decoded.groups || []);
+          setIsSuperuser(decoded.is_superuser || false);
+        } else {
+          fetchUserInfo();
+        }
+      } catch (err) {
+        console.error("Failed to decode token:", err);
+      }
+    } else {
+      setUserGroups([]);
+      setIsSuperuser(false);
+    }
+  }, [location]);
+
+  const fetchUserInfo = async () => {
+    try {
+      const res = await api.get("/api/user/");
+      const data = res.data;
+      if (data) {
+        setUserGroups(data.groups || []);
+        setIsSuperuser(data.is_superuser || false);
+      }
+    } catch (err) {
+      console.error("Failed to fetch user info:", err);
+    }
+  };
 
   const handleLogout = () => {
-    localStorage.removeItem(ACCESS_TOKEN)
-    localStorage.removeItem(REFRESH_TOKEN)
-    setIsAuthenticated(false)
-    navigate("/")
-    setIsOpen(false)
-  }
+    localStorage.removeItem(ACCESS_TOKEN);
+    localStorage.removeItem(REFRESH_TOKEN);
+    setIsAuthenticated(false);
+    setUserGroups([]);
+    setIsSuperuser(false);
+    navigate("/");
+    setIsOpen(false);
+  };
 
   const handleNavigation = (path) => {
     if (path === "/tasks" && !isAuthenticated) {
-      navigate("/login")
+      navigate("/login");
     } else {
-      navigate(path)
+      navigate(path);
     }
-    setIsOpen(false)
-  }
+    setIsOpen(false);
+  };
 
   const isActive = (path) => {
-    if (path === "/" && location.pathname === "/") return true
-    if (path !== "/" && location.pathname.startsWith(path)) return true
-    return false
-  }
+    if (path === "/" && location.pathname === "/") return true;
+    if (path !== "/" && location.pathname.startsWith(path)) return true;
+    return false;
+  };
+
+  // Determine role-based access
+  const isManager = userGroups.map((g) => g.toLowerCase()).includes("manager");
+  const isCashier = userGroups.map((g) => g.toLowerCase()).includes("cashier");
+
+  // Visibility helpers
+  const canSeeInventory = isManager || isSuperuser;
+  const canSeeMenu = isManager || isSuperuser;
+  const canSeeReports = isManager || isSuperuser;
+  const canSeeOrders = isCashier || isManager || isSuperuser;
+
+  // --- Reusable button ---
+  const NavButton = ({ path, icon: Icon, label }) => (
+    <button
+      onClick={() => handleNavigation(path)}
+      className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center space-x-1 ${
+        isActive(path)
+          ? "bg-[#FFC601] text-black"
+          : "text-gray-700 hover:bg-gray-100 hover:text-black"
+      }`}
+    >
+      <Icon size={16} />
+      <span>{label}</span>
+    </button>
+  );
+
+  // --- Reusable button for mobile ---
+  const MobileButton = ({ path, icon: Icon, label }) => (
+    <button
+      onClick={() => handleNavigation(path)}
+      className={`block px-3 py-2 rounded-md text-base font-medium w-full text-left transition-colors duration-200 flex items-center space-x-2 ${
+        isActive(path)
+          ? "bg-[#FFC601] text-black"
+          : "text-gray-700 hover:bg-gray-100 hover:text-black"
+      }`}
+    >
+      <Icon size={16} />
+      <span>{label}</span>
+    </button>
+  );
 
   return (
     <nav className="sticky top-0 z-50 bg-white shadow-lg border-b border-gray-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
-          {/* Logo + Notification (Left Side) */}
+
+          {/* Left: Logo + Notifications */}
           <div className="flex items-center gap-3">
-            {/* Notification Bell - Leftmost */}
             {isAuthenticated && <NotificationPanel />}
-            
-            {/* Logo */}
             <button
               onClick={() => handleNavigation("/")}
               className="flex items-center space-x-2 text-black hover:text-gray-700 transition-colors duration-200"
@@ -74,107 +151,27 @@ const Navbar = () => {
           {/* Desktop Navigation */}
           <div className="hidden md:block">
             <div className="ml-10 flex items-baseline space-x-4">
-              <button
-                onClick={() => handleNavigation("/")}
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center space-x-1 ${
-                  isActive("/") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
-                }`}
-              >
-                <Home size={16} />
-                <span>Home</span>
-              </button>
+              <NavButton path="/" icon={Home} label="Home" />
+              <NavButton path={menuLink} icon={Utensils} label="Menu" />
+              <NavButton path="/shopping-cart" icon={ShoppingCart} label="Cart" />
+              <NavButton path="/about" icon={Info} label="About" />
 
-              <button
-                onClick={() => handleNavigation(menuLink)}
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center space-x-1 ${
-                  isActive("/digital-menu") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
-                }`}
-              >
-                <Utensils size={16} />
-                <span>Menu</span>
-              </button>
-
-              <button
-                onClick={() => handleNavigation("/shopping-cart")}
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center space-x-1 ${
-                  isActive("/shopping-cart") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
-                }`}
-              >
-                <ShoppingCart size={16} />
-                <span>Cart</span>
-              </button>
-
-              <button
-                onClick={() => handleNavigation("/about")}
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center space-x-1 ${
-                  isActive("/about") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
-                }`}
-              >
-                <Info size={16} />
-                <span>About</span>
-              </button>
-              {isAuthenticated && (
-                <button
-                  onClick={() => handleNavigation("/inventory")}
-                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center space-x-1 ${
-                    isActive("/inventory") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
-                  }`}
-                >
-                  <Info size={16} />
-                  <span>Inventory</span>
-                </button>
+              {isAuthenticated && canSeeInventory && (
+                <NavButton path="/inventory" icon={Boxes} label="Inventory" />
               )}
-
-            {isAuthenticated && (
-                <button
-                  onClick={() => handleNavigation("/menu")}
-                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center space-x-1 ${
-                    isActive("/menu") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
-                  }`}
-                >
-                  <Info size={16} />
-                  <span>Menu Mgmt</span>
-                </button>
+              {isAuthenticated && canSeeMenu && (
+                <NavButton path="/menu" icon={Utensils} label="Menu Mgmt" />
               )}
-
-            {isAuthenticated && (
-                <button
-                  onClick={() => handleNavigation("/orders")}
-                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center space-x-1 ${
-                    isActive("/orders") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
-                  }`}
-                >
-                  <ClipboardList size={16} />
-                  <span>Orders</span>
-                </button>
+              {isAuthenticated && canSeeOrders && (
+                <NavButton path="/orders" icon={ClipboardList} label="Orders" />
               )}
-
-            {isAuthenticated && (
-                <button
-                  onClick={() => handleNavigation("/reports")}
-                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center space-x-1 ${
-                    isActive("/reports") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
-                  }`}
-                >
-                  <BarChart3 size={16} />
-                  <span>Reports</span>
-                </button>
+              {isAuthenticated && canSeeReports && (
+                <NavButton path="/reports" icon={BarChart3} label="Reports" />
               )}
-              {/* {isAuthenticated && (
-                <button
-                  onClick={() => handleNavigation("/tasks")}
-                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center space-x-1 ${
-                    isActive("/tasks") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
-                  }`}
-                >
-                  <User size={16} />
-                  <span>Tasks</span>
-                </button>
-              )} */}
             </div>
           </div>
 
-          {/* Desktop Auth Buttons (Right Side) */}
+          {/* Desktop Auth Buttons */}
           <div className="hidden md:flex items-center gap-3">
             {isAuthenticated ? (
               <button
@@ -185,24 +182,16 @@ const Navbar = () => {
                 <span>Logout</span>
               </button>
             ) : (
-              <div className="flex space-x-2">
-                <button
-                  onClick={() => handleNavigation("/login")}
-                  className="bg-gray-800 hover:bg-black text-white px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200"
-                >
-                  Login
-                </button>
-                {/* <button
-                  onClick={() => handleNavigation("/register")}
-                  className="bg-[#FFC601] hover:bg-yellow-500 text-black px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200"
-                >
-                  Register
-                </button> */}
-              </div>
+              <button
+                onClick={() => handleNavigation("/login")}
+                className="bg-gray-800 hover:bg-black text-white px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200"
+              >
+                Login
+              </button>
             )}
           </div>
 
-          {/* Mobile menu button */}
+          {/* Mobile Menu Button */}
           <div className="md:hidden flex items-center gap-2">
             <button
               onClick={() => setIsOpen(!isOpen)}
@@ -218,104 +207,23 @@ const Navbar = () => {
       {isOpen && (
         <div className="md:hidden">
           <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3 bg-white border-t border-gray-200">
-            <button
-              onClick={() => handleNavigation("/")}
-              className={`block px-3 py-2 rounded-md text-base font-medium w-full text-left transition-colors duration-200 flex items-center space-x-2 ${
-                isActive("/") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
-              }`}
-            >
-              <Home size={16} />
-              <span>Home</span>
-            </button>
+            <MobileButton path="/" icon={Home} label="Home" />
+            <MobileButton path={menuLink} icon={Utensils} label="Menu" />
+            <MobileButton path="/shopping-cart" icon={ShoppingCart} label="Cart" />
+            <MobileButton path="/about" icon={Info} label="About" />
 
-            <button
-              onClick={() => handleNavigation(menuLink)}
-              className={`block px-3 py-2 rounded-md text-base font-medium w-full text-left transition-colors duration-200 flex items-center space-x-2 ${
-                isActive("/digital-menu") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
-              }`}
-            >
-              <Utensils size={16} />
-              <span>Menu</span>
-            </button>
-
-            <button
-              onClick={() => handleNavigation("/shopping-cart")}
-              className={`block px-3 py-2 rounded-md text-base font-medium w-full text-left transition-colors duration-200 flex items-center space-x-2 ${
-                isActive("/shopping-cart") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
-              }`}
-            >
-              <ShoppingCart size={16} />
-              <span>Cart</span>
-            </button>
-
-            <button
-              onClick={() => handleNavigation("/about")}
-              className={`block px-3 py-2 rounded-md text-base font-medium w-full text-left transition-colors duration-200 flex items-center space-x-2 ${
-                isActive("/about") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
-              }`}
-            >
-              <Info size={16} />
-              <span>About</span>
-            </button>
-            {isAuthenticated && (
-              <button
-                onClick={() => handleNavigation("/inventory")}
-                className={`block px-3 py-2 rounded-md text-base font-medium w-full text-left transition-colors duration-200 flex items-center space-x-2 ${
-                  isActive("/inventory") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
-                }`}
-              >
-                <Info size={16} />
-                <span>Inventory</span>
-              </button>
+            {isAuthenticated && canSeeInventory && (
+              <MobileButton path="/inventory" icon={Boxes} label="Inventory" />
             )}
-
-            {isAuthenticated && (
-              <button
-                onClick={() => handleNavigation("/menu")}
-                className={`block px-3 py-2 rounded-md text-base font-medium w-full text-left transition-colors duration-200 flex items-center space-x-2 ${
-                  isActive("/menu") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
-                }`}
-              >
-                <Info size={16} />
-                <span>Menu Mgmt</span>
-              </button>
+            {isAuthenticated && canSeeMenu && (
+              <MobileButton path="/menu" icon={Utensils} label="Menu Mgmt" />
             )}
-
-            {isAuthenticated && (
-              <button
-                onClick={() => handleNavigation("/orders")}
-                className={`block px-3 py-2 rounded-md text-base font-medium w-full text-left transition-colors duration-200 flex items-center space-x-2 ${
-                  isActive("/orders") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
-                }`}
-              >
-                <ClipboardList size={16} />
-                <span>Orders</span>
-              </button>
+            {isAuthenticated && canSeeOrders && (
+              <MobileButton path="/orders" icon={ClipboardList} label="Orders" />
             )}
-
-            {isAuthenticated && (
-              <button
-                onClick={() => handleNavigation("/reports")}
-                className={`block px-3 py-2 rounded-md text-base font-medium w-full text-left transition-colors duration-200 flex items-center space-x-2 ${
-                  isActive("/reports") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
-                }`}
-              >
-                <BarChart3 size={16} />
-                <span>Reports</span>
-              </button>
+            {isAuthenticated && canSeeReports && (
+              <MobileButton path="/reports" icon={BarChart3} label="Reports" />
             )}
-
-            {/* {isAuthenticated && (
-              <button
-                onClick={() => handleNavigation("/tasks")}
-                className={`block px-3 py-2 rounded-md text-base font-medium w-full text-left transition-colors duration-200 flex items-center space-x-2 ${
-                  isActive("/tasks") ? "bg-[#FFC601] text-black" : "text-gray-700 hover:bg-gray-100 hover:text-black"
-                }`}
-              >
-                <User size={16} />
-                <span>Tasks</span>
-              </button>
-            )} */}
 
             <div className="border-t border-gray-200 pt-4">
               {isAuthenticated ? (
@@ -327,27 +235,19 @@ const Navbar = () => {
                   <span>Logout</span>
                 </button>
               ) : (
-                <div className="space-y-2">
-                  <button
-                    onClick={() => handleNavigation("/login")}
-                    className="block px-3 py-2 rounded-md text-base font-medium w-full text-left bg-gray-800 hover:bg-black text-white transition-colors duration-200"
-                  >
-                    Login
-                  </button>
-                  {/* <button
-                    onClick={() => handleNavigation("/register")}
-                    className="block px-3 py-2 rounded-md text-base font-medium w-full text-left bg-[#FFC601] hover:bg-yellow-500 text-black transition-colors duration-200"
-                  >
-                    Register
-                  </button> */}
-                </div>
+                <button
+                  onClick={() => handleNavigation("/login")}
+                  className="block px-3 py-2 rounded-md text-base font-medium w-full text-left bg-gray-800 hover:bg-black text-white transition-colors duration-200"
+                >
+                  Login
+                </button>
               )}
             </div>
           </div>
         </div>
       )}
     </nav>
-  )
-}
+  );
+};
 
-export default Navbar
+export default Navbar;

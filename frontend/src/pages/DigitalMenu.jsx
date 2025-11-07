@@ -9,14 +9,15 @@ import {
   Plus,
   Minus,
   MapPin,
-  Utensils,
+  Utensils
 } from "lucide-react"
-import { getMenuItems, getCategories, getBranches } from "../api/inventoryAPI"
+import { getMenuItems, getCategories, getBranches, getRawMaterials } from "../api/inventoryAPI"
 import Navbar from "../components/Navbar"
 
 export default function CustomerMenuPage() {
   const { branchId } = useParams()
   const [menuItems, setMenuItems] = useState([])
+  const [branchMaterials, setBranchMaterials] = useState([]);
   const [categories, setCategories] = useState([])
   const [branches, setBranches] = useState([])
   const [selectedCategory, setSelectedCategory] = useState("all")
@@ -58,10 +59,27 @@ export default function CustomerMenuPage() {
     }
   }, [branches, branchId, order.branch])
 
-  // ✅ Refilter whenever branch/category/search changes
+  // ✅ Fetch branch-specific materials when the branch changes
   useEffect(() => {
-    if (selectedBranch) filterItems()
-  }, [menuItems, selectedCategory, selectedBranch, searchTerm])
+    const loadBranchMaterials = async () => {
+      if (selectedBranch) {
+        try {
+          const res = await getRawMaterials({ branch_id: selectedBranch });
+          setBranchMaterials(res.data || []);
+        } catch (error) {
+          console.error("Failed to load branch-specific materials:", error)
+        }
+      }
+    }
+    loadBranchMaterials()
+  }, [selectedBranch])
+
+  // ✅ Refilter items whenever filters or data (including branchMaterials) change
+  useEffect(() => {
+    if (selectedBranch) {
+      filterItems()
+    }
+  }, [menuItems, selectedCategory, selectedBranch, searchTerm, branchMaterials])
 
   const loadData = async () => {
     try {
@@ -92,14 +110,21 @@ export default function CustomerMenuPage() {
 
   // ✅ Check for sufficient ingredients
   const hasSufficientIngredients = (item) => {
-    if (!item.recipe || !item.recipe.items || item.recipe.items.length === 0) {
+    if (!item.recipe || !item.recipe.items || item.recipe.items.length === 0)
       return true; // No recipe, assume it's available
-    }
 
     for (const recipeItem of item.recipe.items) {
-      const requiredQuantity = (recipeItem.quantity / (item.recipe.yield_quantity || 1));
-      const availableQuantity = recipeItem.raw_material.quantity;
+      // Find the corresponding material from the branch-specific list
+      const branchMaterial = branchMaterials.find(
+        (m) => m.id === recipeItem.raw_material.id
+      );
 
+      // If material doesn't exist in the branch, it's out of stock.
+      const availableQuantity = branchMaterial
+        ? parseFloat(branchMaterial.quantity)
+        : 0;
+      const requiredQuantity = (recipeItem.quantity / (item.recipe.yield_quantity || 1));
+      
       if (parseFloat(availableQuantity) < requiredQuantity) {
         return false; // Not enough of this ingredient
       }

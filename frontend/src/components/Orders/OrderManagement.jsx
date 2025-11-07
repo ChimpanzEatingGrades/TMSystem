@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useReactToPrint } from 'react-to-print';
 import OrderReceipt from './OrderReceipt';
+import AdminVoidModal from './AdminVoidModal'; // Import the new modal
 import { 
   getCustomerOrders, 
   getOrderStats, 
@@ -30,7 +31,7 @@ import {
   testOrdersAPI,
   createCustomerOrder
 } from "../../api/orders";
-import { getMenuItems } from "../../api/menu";
+import { getMenuItems, getRawMaterials } from "../../api/inventoryAPI";
 import api from "../../api"; // Keep for branches fetch
 
 const OrderManagement = () => {
@@ -39,6 +40,8 @@ const OrderManagement = () => {
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
+  const [showAdminVoidModal, setShowAdminVoidModal] = useState(false); // State for the new modal
+  const [orderToVoid, setOrderToVoid] = useState(null); // State to hold the order being voided
   const [branches, setBranches] = useState([]);
   const [filters, setFilters] = useState({
     branch_id: '',
@@ -129,7 +132,7 @@ const OrderManagement = () => {
     }
   };
 
-  const handleStatusChange = async (orderId, action) => {
+  const handleStatusChange = async (orderId, action, isAuthorized = false) => {
     try {
       let response;
       switch (action) {
@@ -146,7 +149,21 @@ const OrderManagement = () => {
           response = await completeOrder(orderId);
           break;
         case 'cancel':
-          response = await cancelOrder(orderId);
+          // If authorization has already been given, cancel immediately.
+          if (isAuthorized) {
+            response = await cancelOrder(orderId);
+            break;
+          }
+
+          const orderToCancel = orders.find(o => o.id === orderId);
+          // If order is pending, cancel without admin void. Otherwise, trigger modal.
+          if (orderToCancel && orderToCancel.status === 'pending') {
+            response = await cancelOrder(orderId);
+          } else if (orderToCancel) {
+            setOrderToVoid(orderToCancel);
+            setShowAdminVoidModal(true);
+            return; // <-- FIX: Stop execution here to let the modal handle the rest.
+          }
           break;
         default:
           return;
@@ -555,6 +572,22 @@ const OrderManagement = () => {
         </div>
       </div>
 
+      {/* Admin Void Modal */}
+      {showAdminVoidModal && orderToVoid && (
+        <AdminVoidModal
+          order={orderToVoid}
+          onClose={() => {
+            setShowAdminVoidModal(false);
+            setOrderToVoid(null);
+          }}
+          onConfirm={async () => {
+            // This function is called by the modal on successful authorization
+            await handleStatusChange(orderToVoid.id, 'cancel', true); // Pass true for isAuthorized
+            setShowAdminVoidModal(false);
+            setOrderToVoid(null);
+          }}
+        />
+      )}
       {/* Order Details Modal */}
       {showOrderModal && selectedOrder && (
         <OrderDetailsModal
@@ -617,6 +650,7 @@ export const CreateOrderModal = ({
     branch: '',
     items: []
   });
+  const [branchMaterials, setBranchMaterials] = useState([]);
 
   const addOrderItem = () => {
     setNewOrder(prev => ({
@@ -639,6 +673,44 @@ export const CreateOrderModal = ({
         i === index ? { ...item, [field]: value } : item
       )
     }));
+  };
+
+  // Fetch raw materials for the selected branch to check stock
+  useEffect(() => {
+    const loadBranchMaterials = async () => {
+      if (newOrder.branch) {
+        try {
+          const res = await getRawMaterials({ branch_id: newOrder.branch });
+          setBranchMaterials(res.data || []);
+        } catch (error) {
+          console.error("Failed to load branch materials for stock check:", error);
+          setBranchMaterials([]); // Clear on error
+        }
+      } else {
+        setBranchMaterials([]); // Clear if no branch is selected
+      }
+    };
+    loadBranchMaterials();
+  }, [newOrder.branch]);
+
+  // Function to check for sufficient ingredients, copied from DigitalMenu
+  const hasSufficientIngredients = (item) => {
+    if (!item.recipe || !item.recipe.items || item.recipe.items.length === 0) {
+      return true; // No recipe, assume it's available
+    }
+
+    for (const recipeItem of item.recipe.items) {
+      const branchMaterial = branchMaterials.find(
+        (m) => m.id === recipeItem.raw_material.id
+      );
+      const availableQuantity = branchMaterial ? parseFloat(branchMaterial.quantity) : 0;
+      const requiredQuantity = (recipeItem.quantity / (item.recipe.yield_quantity || 1));
+
+      if (availableQuantity < requiredQuantity) {
+        return false; // Not enough of this ingredient
+      }
+    }
+    return true; // All ingredients are in stock
   };
 
   const calculateOrderTotal = () => {
@@ -666,7 +738,7 @@ export const CreateOrderModal = ({
         const availability = item.branch_availability?.find(
           a => String(a.branch) === String(newOrder.branch)
         );
-        return availability && availability.is_active && availability.price != null;
+        return availability && availability.is_active && availability.price != null && hasSufficientIngredients(item);
       })
     : [];
 

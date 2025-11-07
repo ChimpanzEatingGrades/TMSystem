@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { Plus, Search, Filter, Grid, List, MapPin, QrCode } from "lucide-react";
 import QRCode from "qrcode"; // Corrected import for the 'qrcode' library
 import {
+  getRawMaterials,
   getMenuItems,
   getCategories,
   getBranches,
@@ -196,6 +197,7 @@ function BranchesModal({ open, onClose }) {
 export default function MenuItemsPage() {
   const [menuItems, setMenuItems] = useState([])
   const [categories, setCategories] = useState([])
+  const [branchMaterials, setBranchMaterials] = useState([])
   const [branches, setBranches] = useState([])
   const [filteredItems, setFilteredItems] = useState([])
   const [selectedCategory, setSelectedCategory] = useState("all")
@@ -217,7 +219,18 @@ export default function MenuItemsPage() {
 
   useEffect(() => {
     filterItems()
-  }, [menuItems, selectedCategory, selectedBranch, searchTerm, statusFilter])
+  }, [menuItems, selectedCategory, selectedBranch, searchTerm, statusFilter, branchMaterials])
+
+  // Fetch branch-specific materials when branch filter changes
+  useEffect(() => {
+    const loadBranchMaterials = async () => {
+      if (selectedBranch !== "all") {
+        const res = await getRawMaterials({ branch_id: selectedBranch });
+        setBranchMaterials(res.data || []);
+      }
+    };
+    loadBranchMaterials();
+  }, [selectedBranch]);
 
   const loadData = async () => {
     try {
@@ -295,7 +308,7 @@ export default function MenuItemsPage() {
         const { hasSufficient } = getIngredientStatus(item);
         const isAvailable = isActive && isInDateRange && isInTimeRange && hasSufficient;
 
-        return statusFilter === "available" ? isAvailable : !isAvailable
+        return statusFilter === "available" ? isAvailable : !isAvailable;
       })
     }
 
@@ -322,20 +335,32 @@ export default function MenuItemsPage() {
 
   // Check for sufficient ingredients and identify which are out of stock
   const getIngredientStatus = (item) => {
+
+    // If no branch is selected, we can't determine stock, so assume it's sufficient.
+    if (selectedBranch === "all") {
+      return { hasSufficient: true, outOfStock: [] };
+    }
+
     if (!item.recipe || !item.recipe.items || item.recipe.items.length === 0) {
       return { hasSufficient: true, outOfStock: [] };
     }
 
     const outOfStock = [];
     for (const recipeItem of item.recipe.items) {
-      const requiredQuantity = (recipeItem.quantity / (item.recipe.yield_quantity || 1));
-      const availableQuantity = recipeItem.raw_material.quantity;
 
-      if (parseFloat(availableQuantity) < requiredQuantity) {
+      // Find the corresponding material from the branch-specific list
+      const branchMaterial = branchMaterials.find(
+        (m) => m.id === recipeItem.raw_material.id
+      );
+      
+      // If material doesn't exist in the branch, it's out of stock.
+      const availableQuantity = branchMaterial ? parseFloat(branchMaterial.quantity) : 0;
+      const requiredQuantity = (recipeItem.quantity / (item.recipe.yield_quantity || 1));
+
+      if (availableQuantity < requiredQuantity) {
         outOfStock.push(recipeItem.raw_material.name);
       }
     }
-
     return { hasSufficient: outOfStock.length === 0, outOfStock };
   };
 
