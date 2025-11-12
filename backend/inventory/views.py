@@ -260,51 +260,71 @@ class RawMaterialViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def clear_all(self, request):
         """Clear all inventory data including materials, purchase orders, and stock transactions"""
+        from django.db import transaction
+        from .models import (
+            StockTransaction, PurchaseOrderItem, PurchaseOrder, RecipeItem, 
+            Recipe, MenuItem, MenuCategory, RawMaterial, BranchQuantity,
+            MenuItemBranchAvailability, CustomerOrder, OrderItem, StockAlert
+        )
+        
         try:
-            # Delete in the correct order to handle foreign key constraints
-            
-            # 1. Delete all stock transactions first
-            StockTransaction.objects.all().delete()
-            
-            # 2. Delete all purchase order items
-            from .models import PurchaseOrderItem
-            PurchaseOrderItem.objects.all().delete()
-            
-            # 3. Delete all purchase orders
-            PurchaseOrder.objects.all().delete()
-            
-            # 4. Delete all recipe items (they reference raw materials)
-            from .models import RecipeItem
-            RecipeItem.objects.all().delete()
-            
-            # 5. Delete all recipes
-            from .models import Recipe
-            Recipe.objects.all().delete()
-            
-            # 6. Delete all menu items (they reference recipes)
-            from .models import MenuItem
-            MenuItem.objects.all().delete()
-            
-            # 7. Delete all menu categories
-            from .models import MenuCategory
-            MenuCategory.objects.all().delete()
-            
-            # 8. Finally delete all raw materials
-            RawMaterial.objects.all().delete()
-            
-            return Response({
-                'message': 'All inventory data has been cleared successfully',
-                'cleared_items': {
-                    'raw_materials': 'All raw materials deleted',
-                    'purchase_orders': 'All purchase orders deleted',
-                    'stock_transactions': 'All stock transactions deleted',
-                    'recipes': 'All recipes deleted',
-                    'recipe_items': 'All recipe items deleted',
-                    'menu_items': 'All menu items deleted',
-                    'menu_categories': 'All menu categories deleted'
-                }
-            }, status=status.HTTP_200_OK)
-            
+            with transaction.atomic():
+                # 1. Delete all order items first (dependencies: CustomerOrder, MenuItem)
+                OrderItem.objects.all().delete()
+                
+                # 2. Delete all customer orders
+                CustomerOrder.objects.all().delete()
+                
+                # 3. Delete all stock transactions
+                StockTransaction.objects.all().delete()
+                
+                # 4. Delete all stock alerts
+                StockAlert.objects.all().delete()
+                
+                # 5. Delete all branch quantities
+                BranchQuantity.objects.all().delete()
+                
+                # 6. Delete all menu item branch availabilities
+                MenuItemBranchAvailability.objects.all().delete()
+                
+                # 7. Delete all purchase order items
+                PurchaseOrderItem.objects.all().delete()
+                
+                # 8. Delete all purchase orders
+                PurchaseOrder.objects.all().delete()
+                
+                # 9. Delete all recipe items (they reference raw materials)
+                RecipeItem.objects.all().delete()
+                
+                # 10. Delete all recipes
+                Recipe.objects.all().delete()
+                
+                # 11. Delete all menu items (they reference recipes)
+                MenuItem.objects.all().delete()
+                
+                # 12. Delete all menu categories
+                MenuCategory.objects.all().delete()
+                
+                # 13. Finally delete all raw materials
+                RawMaterial.objects.all().delete()
+                
+                return Response({
+                    'message': 'All inventory data has been cleared successfully',
+                    'cleared_items': {
+                        'raw_materials': 'All raw materials deleted',
+                        'purchase_orders': 'All purchase orders deleted',
+                        'stock_transactions': 'All stock transactions deleted',
+                        'recipes': 'All recipes deleted',
+                        'recipe_items': 'All recipe items deleted',
+                        'menu_items': 'All menu items deleted',
+                        'menu_categories': 'All menu categories deleted',
+                        'customer_orders': 'All customer orders deleted',
+                        'order_items': 'All order items deleted',
+                        'branch_quantities': 'All branch quantities deleted',
+                        'stock_alerts': 'All stock alerts deleted'
+                    }
+                }, status=status.HTTP_200_OK)
+                
         except Exception as e:
             return Response(
                 {'error': f'Failed to clear inventory data: {str(e)}'}, 
