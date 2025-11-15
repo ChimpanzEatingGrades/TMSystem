@@ -173,13 +173,7 @@ export default function MenuItemModal({ onClose, onSave, editingItem }) {
               : null,
         };
 
-        const hasData =
-          branch.is_active ||
-          branch.valid_from ||
-          branch.valid_until ||
-          branch.available_from ||
-          branch.available_to ||
-          payload.price !== null;
+        const hasData = payload.price !== null;
 
         if (branch.id) {
           if (hasData) {

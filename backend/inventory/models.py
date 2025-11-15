@@ -456,7 +456,8 @@ class CustomerOrder(models.Model):
     subtotal = models.DecimalField(
         max_digits=10, 
         decimal_places=2, 
-        validators=[MinValueValidator(Decimal("0.00"))]
+        validators=[MinValueValidator(Decimal("0.00"))],
+        default=Decimal("0.00")
     )
     tax_amount = models.DecimalField(
         max_digits=10, 

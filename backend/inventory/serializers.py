@@ -183,6 +183,11 @@ class MenuItemBranchAvailabilitySerializer(serializers.ModelSerializer):
             "available_from", "available_to",
             "is_active", "price", "branch_name"
         ]
+    
+    def validate_price(self, value):
+        if value is None:
+            raise serializers.ValidationError("Price must be provided and cannot be null.")
+        return value
 
 class MenuItemSerializer(serializers.ModelSerializer):
     branch_availability = MenuItemBranchAvailabilitySerializer(many=True, read_only=True)
