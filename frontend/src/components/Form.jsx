@@ -55,7 +55,7 @@ function Form({ route, method }) {
         <div className="w-full max-w-md">
           {/* Header */}
           <div className="text-center mb-8">
-            <h1 className="text-4xl font-bold text-black mb-2">Task Manager</h1>
+            <h1 className="text-4xl font-bold text-black mb-2">Employee Portal</h1>
             <p className="text-gray-600">
               {method === "login" ? "Welcome back! Please sign in to continue." : "Create your account to get started."}
             </p>
@@ -199,7 +199,7 @@ function Form({ route, method }) {
           </div>
 
           <div className="text-center mt-8 text-gray-500 text-sm">
-            <p>© 2024 Task Manager. Secure and reliable task management.</p>
+            <p>© 2025 Esfandiary and Judaya. Secure and reliable management.</p>
           </div>
         </div>
       </div>

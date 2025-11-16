@@ -2,16 +2,16 @@
 
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import {
-  Menu, X, ChefHat, LogOut, Home, Info, ShoppingCart, ClipboardList, Utensils, BarChart3, Boxes
-} from "lucide-react";
+import { Menu, X, ChefHat, LogOut, Home, Info, ShoppingCart, ClipboardList, Utensils, BarChart3, Boxes, ChevronDown, UserCog } from "lucide-react";
 import { ACCESS_TOKEN, REFRESH_TOKEN } from "../constants";
 import { jwtDecode } from "jwt-decode";
 import api from "../api";
 import NotificationPanel from "./NotificationPanel";
 
 const Navbar = () => {
+  // State for mobile menu and management dropdown
   const [isOpen, setIsOpen] = useState(false);
+  const [isManagementOpen, setIsManagementOpen] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userGroups, setUserGroups] = useState([]);
   const [isSuperuser, setIsSuperuser] = useState(false);
@@ -95,11 +95,13 @@ const Navbar = () => {
   const isManager = userGroups.map((g) => g.toLowerCase()).includes("manager");
   const isCashier = userGroups.map((g) => g.toLowerCase()).includes("cashier");
 
-  // Visibility helpers
+  // --- Visibility helpers ---
   const canSeeInventory = isManager || isSuperuser;
   const canSeeMenu = isManager || isSuperuser;
   const canSeeReports = isManager || isSuperuser;
   const canSeeOrders = isCashier || isManager || isSuperuser;
+  const canSeeUsers = isManager || isSuperuser;
+  const canSeeManagement = canSeeInventory || canSeeMenu || canSeeOrders || canSeeReports || canSeeUsers;
 
   // --- Reusable button ---
   const NavButton = ({ path, icon: Icon, label }) => (
@@ -132,7 +134,7 @@ const Navbar = () => {
   );
 
   return (
-    <nav className="sticky top-0 z-50 bg-white shadow-lg border-b border-gray-200">
+    <nav className="sticky top-0 z-50 bg-white shadow-md border-b border-gray-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
 
@@ -150,23 +152,39 @@ const Navbar = () => {
 
           {/* Desktop Navigation */}
           <div className="hidden md:block">
-            <div className="ml-10 flex items-baseline space-x-4">
+            <div className="ml-10 flex items-center space-x-4">
               <NavButton path="/" icon={Home} label="Home" />
               <NavButton path={menuLink} icon={Utensils} label="Menu" />
               <NavButton path="/shopping-cart" icon={ShoppingCart} label="Cart" />
               <NavButton path="/about" icon={Info} label="About" />
 
-              {isAuthenticated && canSeeInventory && (
-                <NavButton path="/inventory" icon={Boxes} label="Inventory" />
-              )}
-              {isAuthenticated && canSeeMenu && (
-                <NavButton path="/menu" icon={Utensils} label="Menu Mgmt" />
-              )}
-              {isAuthenticated && canSeeOrders && (
-                <NavButton path="/orders" icon={ClipboardList} label="Orders" />
-              )}
-              {isAuthenticated && canSeeReports && (
-                <NavButton path="/reports" icon={BarChart3} label="Reports" />
+              {/* Management Dropdown */}
+              {isAuthenticated && canSeeManagement && (
+                <div className="relative inline-block text-left">
+                  <button
+                    onClick={() => setIsManagementOpen(!isManagementOpen)}
+                    onBlur={() => setTimeout(() => setIsManagementOpen(false), 200)}
+                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center space-x-1 w-full ${
+                      isManagementOpen || location.pathname.startsWith('/inventory') || location.pathname.startsWith('/menu') || location.pathname.startsWith('/orders') || location.pathname.startsWith('/reports')
+                        ? "bg-[#FFC601] text-black"
+                        : "text-gray-700 hover:bg-gray-100 hover:text-black"
+                    }`}
+                  >
+                    <span>Management</span>
+                    <ChevronDown size={16} className={`transform transition-transform duration-200 ${isManagementOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {isManagementOpen && (
+                    <div className="absolute right-0 mt-2 w-56 origin-top-right bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-50">
+                      <div className="py-1">
+                        {canSeeInventory && <DropdownItem path="/inventory" icon={Boxes} label="Inventory" />}
+                        {canSeeMenu && <DropdownItem path="/menu" icon={Utensils} label="Menu Mgmt" />}
+                        {canSeeOrders && <DropdownItem path="/orders" icon={ClipboardList} label="Orders" />}
+                        {canSeeReports && <DropdownItem path="/reports" icon={BarChart3} label="Reports" />}
+                        {canSeeUsers && <DropdownItem path="http://127.0.0.1:8000/admin/" icon={UserCog} label="Users" isExternal={true} />}
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -212,17 +230,28 @@ const Navbar = () => {
             <MobileButton path="/shopping-cart" icon={ShoppingCart} label="Cart" />
             <MobileButton path="/about" icon={Info} label="About" />
 
-            {isAuthenticated && canSeeInventory && (
-              <MobileButton path="/inventory" icon={Boxes} label="Inventory" />
-            )}
-            {isAuthenticated && canSeeMenu && (
-              <MobileButton path="/menu" icon={Utensils} label="Menu Mgmt" />
-            )}
-            {isAuthenticated && canSeeOrders && (
-              <MobileButton path="/orders" icon={ClipboardList} label="Orders" />
-            )}
-            {isAuthenticated && canSeeReports && (
-              <MobileButton path="/reports" icon={BarChart3} label="Reports" />
+            {/* Mobile Management Section */}
+            {isAuthenticated && canSeeManagement && (
+              <div className="border-t border-gray-200 pt-2 mt-2">
+                <h3 className="px-3 text-xs font-semibold uppercase text-gray-500 tracking-wider">Management</h3>
+                <div className="mt-1 space-y-1">
+                  {canSeeInventory && <MobileButton path="/inventory" icon={Boxes} label="Inventory" />}
+                  {canSeeMenu && <MobileButton path="/menu" icon={Utensils} label="Menu Mgmt" />}
+                  {canSeeOrders && <MobileButton path="/orders" icon={ClipboardList} label="Orders" />}
+                  {canSeeReports && <MobileButton path="/reports" icon={BarChart3} label="Reports" />}
+                  {canSeeUsers && (
+                     <a
+                        href="http://127.0.0.1:8000/admin/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block px-3 py-2 rounded-md text-base font-medium w-full text-left transition-colors duration-200 flex items-center space-x-2 text-gray-700 hover:bg-gray-100 hover:text-black"
+                      >
+                        <UserCog size={16} />
+                        <span>Users</span>
+                      </a>
+                  )}
+                </div>
+              </div>
             )}
 
             <div className="border-t border-gray-200 pt-4">
@@ -249,5 +278,29 @@ const Navbar = () => {
     </nav>
   );
 };
+
+// A dedicated component for dropdown items for better aesthetics and separation of concerns.
+const DropdownItem = ({ path, icon: Icon, label, isExternal = false }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const isActive = !isExternal && location.pathname.startsWith(path);
+
+  const handleClick = () => {
+    if (isExternal) {
+      window.open(path, '_blank', 'noopener,noreferrer');
+    } else {
+      navigate(path);
+    }
+  };
+
+  return (
+    <button onClick={handleClick} className={`w-full text-left px-4 py-2 text-sm flex items-center gap-3 transition-colors duration-150 ${
+      isActive ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
+    }`}>
+      <Icon size={16} className={isActive ? 'text-[#FFC601]' : 'text-gray-400'} />
+      <span>{label}</span>
+    </button>
+  );
+}
 
 export default Navbar;
