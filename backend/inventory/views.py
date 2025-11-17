@@ -46,6 +46,26 @@ from .serializers import (
 )
 
 
+class VerifyAdminView(APIView):
+    """
+    An endpoint for verifying admin (superuser) credentials.
+    This is used for sensitive actions like voiding a confirmed order.
+    """
+    permission_classes = [AllowAny] # Permissions are handled internally
+
+    def post(self, request, *args, **kwargs):
+        username = request.data.get('username')
+        password = request.data.get('password')
+
+        if not username or not password:
+            return Response({'error': 'Username and password are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = authenticate(username=username, password=password)
+        if user is not None and (user.is_superuser or user.groups.filter(name='Manager').exists()):
+            return Response({'message': 'Admin verification successful.'}, status=status.HTTP_200_OK)
+        return Response({'error': 'Invalid credentials or user is not a manager.'}, status=status.HTTP_403_FORBIDDEN)
+
+
 # -------------------
 # Core Inventory Views
 # -------------------
