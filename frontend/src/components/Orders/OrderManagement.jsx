@@ -795,12 +795,30 @@ export const CreateOrderModal = ({
 
   const { subtotal, tax, total } = calculateOrderTotal();
 
+  // ✅ Enhanced availability check, mirroring DigitalMenu.jsx
   const availableMenuItems = newOrder.branch
     ? menuItems.filter(item => {
+        const now = new Date();
+        const currentTime = now.toTimeString().slice(0, 5); // "HH:MM"
+        const currentDate = now.toISOString().split("T")[0]; // "YYYY-MM-DD"
+
         const availability = item.branch_availability?.find(
           a => String(a.branch) === String(newOrder.branch)
         );
-        return availability && availability.is_active && availability.price != null && hasSufficientIngredients(item);
+
+        if (!availability || !availability.is_active || availability.price == null) {
+          return false;
+        }
+
+        const inDate =
+          (!availability.valid_from || currentDate >= availability.valid_from) &&
+          (!availability.valid_until || currentDate <= availability.valid_until);
+
+        const inTime =
+          (!availability.available_from || currentTime >= availability.available_from) &&
+          (!availability.available_to || currentTime <= availability.available_to);
+
+        return inDate && inTime && hasSufficientIngredients(item);
       })
     : [];
 

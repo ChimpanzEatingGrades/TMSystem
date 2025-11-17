@@ -439,6 +439,11 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSuccess, selectedBranch }) => {
                         : 'bg-purple-50 border-purple-200 text-purple-700'
                     }`}>
                       <div className="flex items-center justify-between">
+                        {item.isNewMaterial && rawMaterials.some(m => m.name.toLowerCase() === item.name.toLowerCase()) && (
+                          <span className="font-bold text-red-600 mr-2">
+                            ⚠️ Warning: A material named "{item.name}" already exists. This will add to its stock.
+                          </span>
+                        )}
                         <div>
                           <span className="font-medium">
                             {item.material_type === 'raw' && '🥩 Raw Material'}
