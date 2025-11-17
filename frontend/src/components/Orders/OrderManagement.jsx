@@ -605,7 +605,6 @@ const OrderManagement = () => {
               </p>
             </div>
           )}
-<<<<<<< HEAD
 
           {/* Pagination */}
           {orders.length > 0 && (
@@ -702,8 +701,6 @@ const OrderManagement = () => {
               </div>
             </div>
           )}
-=======
->>>>>>> parent of 70d257e (orderlist pagination)
         </div>
       </div>
 
@@ -828,6 +825,357 @@ const OrderManagement = () => {
                 onClick={printReceipt}
                 className="px-4 py-2 text-sm font-medium text-white bg-yellow-500 rounded-md hover:bg-yellow-600 flex items-center gap-2"
               >
+                <Printer className="h-4 w-4" />
+                Print Receipt
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default OrderManagement;
+
+// Create Order Modal Component
+export const CreateOrderModal = ({ 
+  initialOrderState,
+  menuItems,
+  branches,
+              >
+  onClose, 
+  onSubmit,
+}) => {
+  const [newOrder, setNewOrder] = useState(initialOrderState || {
+    customer_name: '',
+    special_requests: '',
+    notes: '',
+    branch: '',
+    items: []
+  });
+  const [branchMaterials, setBranchMaterials] = useState([]);
+
+  const addOrderItem = () => {
+    setNewOrder(prev => ({
+      ...prev,
+      items: [...prev.items, { menu_item: '', quantity: 1, special_instructions: '' }]
+    }));
+  };
+
+  const removeOrderItem = (index) => {
+    setNewOrder(prev => ({
+      ...prev,
+      items: prev.items.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateOrderItem = (index, field, value) => {
+    setNewOrder(prev => ({
+      ...prev,
+      items: prev.items.map((item, i) => 
+        i === index ? { ...item, [field]: value } : item
+      )
+    }));
+  };
+
+  // Fetch raw materials for the selected branch to check stock
+  useEffect(() => {
+    const loadBranchMaterials = async () => {
+      if (newOrder.branch) {
+        try {
+          const res = await getRawMaterials({ branch_id: newOrder.branch });
+          setBranchMaterials(res.data || []);
+        } catch (error) {
+          console.error("Failed to load branch materials for stock check:", error);
+          setBranchMaterials([]); // Clear on error
+        }
+      } else {
+        setBranchMaterials([]); // Clear if no branch is selected
+      }
+    };
+    loadBranchMaterials();
+  }, [newOrder.branch]);
+
+  // Function to check for sufficient ingredients
+  const hasSufficientIngredients = (item) => {
+    if (!item.recipe || !item.recipe.items || item.recipe.items.length === 0) {
+      return true; // No recipe, assume it's available
+    }
+
+    for (const recipeItem of item.recipe.items) {
+      const branchMaterial = branchMaterials.find(
+        (m) => m.id === recipeItem.raw_material.id
+      );
+      const availableQuantity = branchMaterial ? parseFloat(branchMaterial.quantity) : 0;
+      const requiredQuantity = (recipeItem.quantity / (item.recipe.yield_quantity || 1));
+
+      if (availableQuantity < requiredQuantity) {
+        return false; // Not enough of this ingredient
+      }
+    }
+    return true; // All ingredients are in stock
+  };
+
+  const calculateOrderTotal = () => {
+    if (!newOrder.branch) return { subtotal: 0, tax: 0, total: 0 };
+
+    const subtotal = newOrder.items.reduce((sum, currentItem) => {
+      const menuItem = menuItems.find(m => m.id === parseInt(currentItem.menu_item));
+      if (!menuItem) return sum;
+
+      const availability = menuItem.branch_availability.find(
+        a => String(a.branch) === String(newOrder.branch)
+      );
+      const price = availability ? parseFloat(availability.price) : 0;
+      return sum + (price * currentItem.quantity);
+    }, 0);
+    
+    const tax = 0;
+    return { subtotal, tax, total: subtotal + tax };
+  };
+
+  const { subtotal, tax, total } = calculateOrderTotal();
+
+  const availableMenuItems = newOrder.branch
+    ? menuItems.filter(item => {
+        const availability = item.branch_availability?.find(
+          a => String(a.branch) === String(newOrder.branch)
+        );
+        return availability && availability.is_active && availability.price != null && hasSufficientIngredients(item);
+      })
+    : [];
+
+  const getPriceForMenuItem = (itemId) => {
+    const item = menuItems.find(m => m.id === parseInt(itemId));
+    return item?.branch_availability?.find(a => String(a.branch) === String(newOrder.branch))?.price || 0;
+  };
+
+  const handleSubmit = async () => {
+    if (!newOrder.customer_name.trim()) {
+      alert('Please enter customer name');
+      return;
+    }
+    if (!newOrder.branch) {
+      alert('Please select a branch');
+      return;
+    }
+    if (newOrder.items.length === 0) {
+      alert('Please add at least one item');
+      return;
+    }
+    await onSubmit(newOrder);
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="p-6">
+          {/* Header */}
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold text-gray-900">Create New Order</h2>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+              <XCircle className="h-6 w-6" />
+            </button>
+          </div>
+
+          {/* Customer Information */}
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Customer Information</h3>
+            <div className="grid grid-cols-1 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Customer Name *
+                </label>
+                <input
+                  type="text"
+                  value={newOrder.customer_name}
+                  onChange={(e) => setNewOrder({ ...newOrder, customer_name: e.target.value })}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                  placeholder="Enter customer name"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Branch *
+                </label>
+                <select
+                  value={newOrder.branch}
+                  onChange={(e) => setNewOrder({ ...newOrder, branch: e.target.value })}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                >
+                  <option value="">Select branch...</option>
+                  {branches.map((branch) => (
+                    <option key={branch.id} value={branch.id}>
+                      {branch.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Special Requests
+                </label>
+                <textarea
+                  value={newOrder.special_requests}
+                  onChange={(e) => setNewOrder({ ...newOrder, special_requests: e.target.value })}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                  rows="2"
+                  placeholder="Any special requests..."
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Staff Notes
+                </label>
+                <textarea
+                  value={newOrder.notes}
+                  onChange={(e) => setNewOrder({ ...newOrder, notes: e.target.value })}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                  rows="2"
+                  placeholder="Internal notes..."
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Order Items */}
+          <div className="mb-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Order Items</h3>
+              <button
+                onClick={addOrderItem}
+                className="px-3 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded-md text-sm flex items-center gap-1"
+              >
+                <Plus className="h-4 w-4" />
+                Add Item
+              </button>
+            </div>
+            
+            <div className="space-y-3">
+              {newOrder.items.map((item, index) => {
+                const unitPrice = getPriceForMenuItem(item.menu_item);
+                const itemTotal = unitPrice * item.quantity;
+                const menuItemFromList = availableMenuItems.find(
+                  (mi) => mi.id === parseInt(item.menu_item)
+                );
+                
+                return (
+                  <div key={index} className="border border-gray-200 rounded-lg p-4">
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                      <div className="md:col-span-5">
+                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                          Menu Item *
+                        </label>
+                        <select
+                          value={item.menu_item}
+                          onChange={(e) => updateOrderItem(index, 'menu_item', e.target.value)}
+                          className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                        >
+                          <option value="">Select item...</option>
+                          {availableMenuItems.map(menuItem => (
+                            <option key={menuItem.id} value={menuItem.id}>
+                              {menuItem.name} - ₱{getPriceForMenuItem(menuItem.id)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      
+                      <div className="md:col-span-2">
+                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                          Quantity *
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={item.quantity}
+                          onChange={(e) => updateOrderItem(index, 'quantity', parseInt(e.target.value) || 1)}
+                          className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                        />
+                      </div>
+                      
+                      <div className="md:col-span-4">
+                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                          Special Instructions
+                        </label>
+                        <input
+                          type="text"
+                          value={item.special_instructions}
+                          onChange={(e) => updateOrderItem(index, 'special_instructions', e.target.value)}
+                          className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                          placeholder="Optional..."
+                        />
+                      </div>
+                      
+                      <div className="md:col-span-1 flex items-end">
+                        <button
+                          onClick={() => removeOrderItem(index)}
+                          className="w-full px-2 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-md text-sm"
+                          title="Remove item"
+                        >
+                          <Trash2 className="h-4 w-4 mx-auto" />
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {menuItemFromList && (
+                      <div className="mt-2 text-sm text-gray-600 text-right">
+                        Item Total: ₱{itemTotal.toFixed(2)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              
+              {newOrder.items.length === 0 && (
+                <div className="text-center py-8 text-gray-500">
+                  {newOrder.branch
+                    ? 'No items added. Click "Add Item" to start.'
+                    : 'Please select a branch to see available items.'}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Order Summary */}
+          <div className="border-t border-gray-200 pt-4 mb-6">
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Subtotal:</span>
+                <span className="font-medium">₱{subtotal.toFixed(2)}</span>
+              </div>
+              
+              <div className="flex justify-between text-lg font-bold border-t border-gray-200 pt-2">
+                <span>Total:</span>
+                <span>₱{total.toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex justify-end space-x-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmit}
+              className="px-4 py-2 text-sm font-medium text-white bg-yellow-500 rounded-md hover:bg-yellow-600"
+            >
+              Create Order
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
                 <Printer className="h-4 w-4" />
                 Print Receipt
               </button>
