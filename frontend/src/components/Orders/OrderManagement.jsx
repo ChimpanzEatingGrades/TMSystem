@@ -15,9 +15,7 @@ import {
   Trash2,
   RefreshCw,
   Printer,
-  X,
-  ChevronLeft,
-  ChevronRight
+  X
 } from "lucide-react";
 import { useReactToPrint } from 'react-to-print';
 import OrderReceipt from './OrderReceipt';
@@ -54,11 +52,9 @@ const OrderManagement = () => {
   });
   const [receiptOrder, setReceiptOrder] = useState(null);
   const [showReceipt, setShowReceipt] = useState(false);
-  const receiptRef = useRef(null);
-
-  // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
-  const ordersPerPage = 10;
+  const [pageSize, setPageSize] = useState(10);
+  const receiptRef = useRef(null);
 
   const statusConfig = {
     pending: { 
@@ -122,6 +118,7 @@ const OrderManagement = () => {
       setLoading(true);
       const response = await getCustomerOrders(filters);
       setOrders(response.data);
+      setCurrentPage(1);
     } catch (error) {
       console.error('Error fetching orders:', error);
     } finally {
@@ -227,6 +224,7 @@ const OrderManagement = () => {
 
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({ ...prev, [key]: value }));
+    setCurrentPage(1);
   };
 
   const clearFilters = () => {
@@ -284,33 +282,9 @@ const OrderManagement = () => {
     }
   }
 
-  // Calculate pagination
-  const indexOfLastOrder = currentPage * ordersPerPage;
-  const indexOfFirstOrder = indexOfLastOrder - ordersPerPage;
-  const currentOrders = orders.slice(indexOfFirstOrder, indexOfLastOrder);
-  const totalPages = Math.ceil(orders.length / ordersPerPage);
-
-  const goToPage = (pageNumber) => {
-    setCurrentPage(pageNumber);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const goToPreviousPage = () => {
-    if (currentPage > 1) {
-      goToPage(currentPage - 1);
-    }
-  };
-
-  const goToNextPage = () => {
-    if (currentPage < totalPages) {
-      goToPage(currentPage + 1);
-    }
-  };
-
-  // Reset to page 1 when filters change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [filters]);
+  const totalPages = Math.max(1, Math.ceil(orders.length / pageSize) || 1);
+  const startIndex = (currentPage - 1) * pageSize;
+  const paginatedOrders = orders.slice(startIndex, startIndex + pageSize);
 
   if (loading) {
     return (
@@ -483,9 +457,7 @@ const OrderManagement = () => {
         {/* Orders Table */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-            <h3 className="text-lg font-semibold text-gray-900">
-              Orders {orders.length > 0 && `(${orders.length} total)`}
-            </h3>
+            <h3 className="text-lg font-semibold text-gray-900">Orders</h3>
             <button
               onClick={fetchOrders}
               className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-yellow-500"
@@ -527,7 +499,7 @@ const OrderManagement = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {currentOrders.map((order) => {
+                {paginatedOrders.map((order) => {
                   const StatusIcon = statusConfig[order.status]?.icon || Clock;
                   const statusColor = statusConfig[order.status]?.color || 'bg-gray-100 text-gray-800';
                   const actions = getStatusActions(order.status);
@@ -592,6 +564,54 @@ const OrderManagement = () => {
               </tbody>
             </table>
           </div>
+          {orders.length > 0 && (
+            <div className="px-6 py-3 border-t border-gray-200 flex items-center justify-between">
+              <div className="text-sm text-gray-700">
+                Showing {startIndex + 1} to {Math.min(startIndex + pageSize, orders.length)} of {orders.length} orders
+              </div>
+              <div className="flex items-center space-x-2">
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                >
+                  <option value={10}>10 / page</option>
+                  <option value={25}>25 / page</option>
+                  <option value={50}>50 / page</option>
+                </select>
+                <div className="flex items-center space-x-1">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className={`px-3 py-1 rounded-md text-sm border ${
+                      currentPage === 1
+                        ? 'text-gray-400 border-gray-200 cursor-not-allowed'
+                        : 'text-gray-700 border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    Previous
+                  </button>
+                  <span className="text-sm text-gray-700">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                    className={`px-3 py-1 rounded-md text-sm border ${
+                      currentPage === totalPages
+                        ? 'text-gray-400 border-gray-200 cursor-not-allowed'
+                        : 'text-gray-700 border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           
           {orders.length === 0 && (
             <div className="text-center py-12">
@@ -603,102 +623,6 @@ const OrderManagement = () => {
                   : 'No orders have been placed yet'
                 }
               </p>
-            </div>
-          )}
-
-          {/* Pagination */}
-          {orders.length > 0 && (
-            <div className="bg-white px-4 py-3 border-t border-gray-200 sm:px-6">
-              <div className="flex items-center justify-between">
-                <div className="flex-1 flex justify-between sm:hidden">
-                  <button
-                    onClick={goToPreviousPage}
-                    disabled={currentPage === 1}
-                    className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Previous
-                  </button>
-                  <button
-                    onClick={goToNextPage}
-                    disabled={currentPage === totalPages}
-                    className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Next
-                  </button>
-                </div>
-                <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm text-gray-700">
-                      Showing <span className="font-medium">{indexOfFirstOrder + 1}</span> to{' '}
-                      <span className="font-medium">
-                        {Math.min(indexOfLastOrder, orders.length)}
-                      </span>{' '}
-                      of <span className="font-medium">{orders.length}</span> orders
-                    </p>
-                  </div>
-                  <div>
-                    <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
-                      <button
-                        onClick={goToPreviousPage}
-                        disabled={currentPage === 1}
-                        className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <span className="sr-only">Previous</span>
-                        <ChevronLeft className="h-5 w-5" />
-                      </button>
-                      
-                      {[...Array(totalPages)].map((_, index) => {
-                        const pageNumber = index + 1;
-                        // Show first page, last page, current page, and pages around current
-                        const showPage = 
-                          pageNumber === 1 || 
-                          pageNumber === totalPages || 
-                          (pageNumber >= currentPage - 1 && pageNumber <= currentPage + 1);
-                        
-                        const showEllipsis = 
-                          (pageNumber === 2 && currentPage > 3) ||
-                          (pageNumber === totalPages - 1 && currentPage < totalPages - 2);
-
-                        if (showEllipsis) {
-                          return (
-                            <span
-                              key={pageNumber}
-                              className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700"
-                            >
-                              ...
-                            </span>
-                          );
-                        }
-
-                        if (!showPage) return null;
-
-                        return (
-                          <button
-                            key={pageNumber}
-                            onClick={() => goToPage(pageNumber)}
-                            className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
-                              currentPage === pageNumber
-                                ? 'z-10 bg-yellow-50 border-yellow-500 text-yellow-600'
-                                : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
-                            }`}
-                          >
-                            {pageNumber}
-                          </button>
-                        );
-                      })}
-                      
-                      <button
-                        onClick={goToNextPage}
-                        disabled={currentPage === totalPages}
-                        className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <span className="sr-only">Next</span>
-                        <ChevronRight className="h-5 w-5" />
-                      </button>
-                    </nav>
-                  </div>
-                </div>
-              </div>
             </div>
           )}
         </div>
@@ -714,119 +638,50 @@ const OrderManagement = () => {
           }}
           onConfirm={async () => {
             // This function is called by the modal on successful authorization
-            await handleStatusChange(orderToVoid.id, 'cancel', true);
+            await handleStatusChange(orderToVoid.id, 'cancel', true); // Pass true for isAuthorized
             setShowAdminVoidModal(false);
             setOrderToVoid(null);
           }}
         />
       )}
-
       {/* Order Details Modal */}
       {showOrderModal && selectedOrder && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white">
-              <h2 className="text-2xl font-bold text-gray-900">Order Details #{selectedOrder.id}</h2>
-              <button
-                onClick={() => setShowOrderModal(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-6 w-6" />
-              </button>
-            </div>
-
-            <div className="p-6">
-              <div className="grid grid-cols-2 gap-6 mb-6">
-                <div>
-                  <h3 className="text-sm font-medium text-gray-500 mb-2">Customer Information</h3>
-                  <p className="text-lg font-semibold text-gray-900">{selectedOrder.customer_name}</p>
-                  <p className="text-sm text-gray-600 mt-1">Order Date: {formatDate(selectedOrder.order_date)}</p>
-                </div>
-                <div>
-                  <h3 className="text-sm font-medium text-gray-500 mb-2">Order Status</h3>
-                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${statusConfig[selectedOrder.status]?.color}`}>
-                    {statusConfig[selectedOrder.status]?.label}
-                  </span>
-                </div>
-              </div>
-
-              {selectedOrder.special_requests && (
-                <div className="mb-6">
-                  <h3 className="text-sm font-medium text-gray-500 mb-2">Special Requests</h3>
-                  <p className="text-gray-900">{selectedOrder.special_requests}</p>
-                </div>
-              )}
-
-              <div className="mb-6">
-                <h3 className="text-sm font-medium text-gray-500 mb-2">Order Items</h3>
-                <div className="bg-gray-50 rounded-lg overflow-hidden">
-                  <table className="min-w-full">
-                    <thead className="bg-gray-100">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Unit Price</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Subtotal</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {selectedOrder.items?.map((item, index) => (
-                        <tr key={index}>
-                          <td className="px-4 py-3 text-sm text-gray-900">{item.menu_item_name}</td>
-                          <td className="px-4 py-3 text-sm text-gray-900">{item.quantity}</td>
-                          <td className="px-4 py-3 text-sm text-gray-900">{formatCurrency(item.unit_price)}</td>
-                          <td className="px-4 py-3 text-sm text-gray-900">{formatCurrency(item.subtotal)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div className="border-t border-gray-200 pt-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-lg font-medium text-gray-900">Total Amount:</span>
-                  <span className="text-2xl font-bold text-gray-900">{formatCurrency(selectedOrder.total_amount)}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <OrderDetailsModal
+          order={selectedOrder}
+          onClose={() => {
+            setShowOrderModal(false);
+            setSelectedOrder(null);
+          }}
+          onStatusChange={handleStatusChange}
+        />
       )}
 
       {/* Receipt Modal */}
       {showReceipt && receiptOrder && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-4 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white">
-              <h2 className="text-xl font-bold text-gray-900">Receipt Preview</h2>
-              <button
-                onClick={() => setShowReceipt(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-6 w-6" />
-              </button>
-            </div>
-
-            <div className="p-4">
-              <div ref={receiptRef}>
-                <OrderReceipt order={receiptOrder} />
-              </div>
-            </div>
-
-            <div className="p-4 border-t border-gray-200 flex justify-end gap-2 sticky bottom-0 bg-white">
-              <button
-                onClick={() => setShowReceipt(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-              >
-                Cancel
-              </button>
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-auto relative">
+            <button
+              onClick={() => setShowReceipt(false)}
+              className="absolute top-4 right-4 z-10 p-2 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
+            >
+              <X size={20} />
+            </button>
+            
+            <OrderReceipt ref={receiptRef} order={receiptOrder} />
+            
+            <div className="p-6 border-t border-gray-200 flex gap-3 bg-gray-50">
               <button
                 onClick={printReceipt}
-                className="px-4 py-2 text-sm font-medium text-white bg-yellow-500 rounded-md hover:bg-yellow-600 flex items-center gap-2"
+                className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors flex items-center justify-center gap-2"
               >
-                <Printer className="h-4 w-4" />
+                <Printer size={18} />
                 Print Receipt
+              </button>
+              <button
+                onClick={() => setShowReceipt(false)}
+                className="flex-1 px-4 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-semibold transition-colors"
+              >
+                Close
               </button>
             </div>
           </div>
@@ -836,14 +691,11 @@ const OrderManagement = () => {
   );
 };
 
-export default OrderManagement;
-
 // Create Order Modal Component
 export const CreateOrderModal = ({ 
   initialOrderState,
   menuItems,
   branches,
-              >
   onClose, 
   onSubmit,
 }) => {
@@ -897,7 +749,7 @@ export const CreateOrderModal = ({
     loadBranchMaterials();
   }, [newOrder.branch]);
 
-  // Function to check for sufficient ingredients
+  // Function to check for sufficient ingredients, copied from DigitalMenu
   const hasSufficientIngredients = (item) => {
     if (!item.recipe || !item.recipe.items || item.recipe.items.length === 0) {
       return true; // No recipe, assume it's available
@@ -998,7 +850,7 @@ export const CreateOrderModal = ({
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Branch *
+                  Branch
                 </label>
                 <select
                   value={newOrder.branch}
@@ -1176,20 +1028,221 @@ export const CreateOrderModal = ({
   );
 };
 
-                <Printer className="h-4 w-4" />
-                Print Receipt
-              </button>
+// Order Details Modal Component
+const OrderDetailsModal = ({ order, onClose, onStatusChange }) => {
+  const statusConfig = {
+    pending: { color: 'bg-yellow-100 text-yellow-800', icon: Clock },
+    confirmed: { color: 'bg-blue-100 text-blue-800', icon: CheckCircle },
+    preparing: { color: 'bg-orange-100 text-orange-800', icon: ChefHat },
+    ready: { color: 'bg-green-100 text-green-800', icon: Package },
+    completed: { color: 'bg-emerald-100 text-emerald-800', icon: CheckCircle },
+    cancelled: { color: 'bg-red-100 text-red-800', icon: XCircle }
+  };
+
+  const StatusIcon = statusConfig[order.status]?.icon || Clock;
+  const statusColor = statusConfig[order.status]?.color || 'bg-gray-100 text-gray-800';
+
+  const getStatusActions = (status) => {
+    switch (status) {
+      case 'pending':
+        return [
+          { action: 'confirm', label: 'Confirm Order', color: 'bg-blue-500 hover:bg-blue-600' },
+          { action: 'cancel', label: 'Cancel Order', color: 'bg-red-500 hover:bg-red-600' }
+        ];
+      case 'confirmed':
+        return [
+          { action: 'start_preparing', label: 'Start Preparing', color: 'bg-orange-500 hover:bg-orange-600' },
+          { action: 'cancel', label: 'Cancel Order', color: 'bg-red-500 hover:bg-red-600' }
+        ];
+      case 'preparing':
+        return [
+          { action: 'mark_ready', label: 'Mark as Ready', color: 'bg-green-500 hover:bg-green-600' },
+          { action: 'cancel', label: 'Cancel Order', color: 'bg-red-500 hover:bg-red-600' }
+        ];
+      case 'ready':
+        return [
+          { action: 'complete', label: 'Complete Order', color: 'bg-emerald-500 hover:bg-emerald-600' }
+        ];
+      default:
+        return [];
+    }
+  };
+
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-PH', {
+      style: 'currency',
+      currency: 'PHP'
+    }).format(amount);
+  };
+
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleString();
+  };
+
+  const actions = getStatusActions(order.status);
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="p-6">
+          {/* Header */}
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold text-gray-900">
+              Order #{order.id} Details
+            </h2>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <XCircle className="h-6 w-6" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Order Information */}
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Order Information</h3>
+                
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Customer:</span>
+                    <span className="font-medium">{order.customer_name}</span>
+                  </div>
+
+                  {order.branch_name && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Branch:</span>
+                      <span className="font-medium">{order.branch_name}</span>
+                    </div>
+                  )}
+                  
+                  {order.customer_phone && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Phone:</span>
+                      <span className="font-medium">{order.customer_phone}</span>
+                    </div>
+                  )}
+                  
+                  {order.customer_email && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Email:</span>
+                      <span className="font-medium">{order.customer_email}</span>
+                    </div>
+                  )}
+                  
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Status:</span>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColor}`}>
+                      <StatusIcon className="h-3 w-3 mr-1" />
+                      {order.status_display}
+                    </span>
+                  </div>
+                  
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Order Date:</span>
+                    <span className="font-medium">{formatDate(order.order_date)}</span>
+                  </div>
+                  
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Total Amount:</span>
+                    <span className="font-bold text-lg">{formatCurrency(order.total_amount)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {order.special_requests && (
+                <div>
+                  <h4 className="text-sm font-medium text-gray-900 mb-2">Special Requests</h4>
+                  <p className="text-gray-600 text-sm bg-gray-50 p-3 rounded-md">
+                    {order.special_requests}
+                  </p>
+                </div>
+              )}
+
+              {order.notes && (
+                <div>
+                  <h4 className="text-sm font-medium text-gray-900 mb-2">Staff Notes</h4>
+                  <p className="text-gray-600 text-sm bg-gray-50 p-3 rounded-md">
+                    {order.notes}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Order Items */}
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Order Items</h3>
+              
+              <div className="space-y-3">
+                {order.items?.map((item) => (
+                  <div key={item.id} className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <h4 className="font-medium text-gray-900">{item.menu_item_name}</h4>
+                      <span className="text-sm font-medium text-gray-900">
+                        {formatCurrency(item.total_price)}
+                      </span>
+                    </div>
+                    
+                    <div className="flex justify-between text-sm text-gray-600 mb-2">
+                      <span>Quantity: {item.quantity}</span>
+                      <span>Price: {formatCurrency(item.unit_price)} each</span>
+                    </div>
+                    
+                    {item.special_instructions && (
+                      <p className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
+                        <strong>Special Instructions:</strong> {item.special_instructions}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Order Summary */}
+              <div className="mt-6 border-t border-gray-200 pt-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Subtotal:</span>
+                    <span className="font-medium">{formatCurrency(order.subtotal)}</span>
+                  </div>
+                  
+                  {order.tax_amount > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Tax:</span>
+                      <span className="font-medium">{formatCurrency(order.tax_amount)}</span>
+                    </div>
+                  )}
+                  
+                  <div className="flex justify-between text-lg font-bold border-t border-gray-200 pt-2">
+                    <span>Total:</span>
+                    <span>{formatCurrency(order.total_amount)}</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
+
+          {/* Action Buttons */}
+          {actions.length > 0 && (
+            <div className="mt-8 flex justify-end space-x-3">
+              {actions.map((action) => (
+                <button
+                  key={action.action}
+                  onClick={() => {
+                    onStatusChange(order.id, action.action);
+                    onClose();
+                  }}
+                  className={`px-4 py-2 text-sm font-medium text-white rounded-md ${action.color}`}
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 };
 
 export default OrderManagement;
-
-// CreateOrderModal Component
-export const CreateOrderModal = ({ initialOrderState, menuItems, branches, onClose, onSubmit }) => {
-  // ...existing CreateOrderModal code...
-};

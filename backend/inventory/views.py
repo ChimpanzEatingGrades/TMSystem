@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 from django.contrib.auth import authenticate
 from django.db import models
 from django.utils import timezone
+from decimal import Decimal
 
 from .models import (
     RawMaterial,
