@@ -77,7 +77,7 @@ export default function Inventory() {
     if (!selectedBranch) return
     
     try {
-      const res = await api.get(`/inventory/branch-quantities/by_branch/?branch_id=${selectedBranch}`)
+      const res = await api.get(`/inventory/rawmaterials/?branch_id=${selectedBranch}`)
       console.log("Fetched materials:", res.data) // Debug log to check data
       setMaterials(res.data)
     } catch (err) {
@@ -471,7 +471,7 @@ export default function Inventory() {
                                     <option key={u.id} value={u.abbreviation}>
                                       {u.abbreviation}
                                     </option>
-                                  ))
+                                  ))}
                               </select>
                             ) : (
                               <span className="text-gray-600 font-mono text-sm bg-gray-100 px-2 py-1 rounded">
@@ -497,17 +497,19 @@ export default function Inventory() {
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex flex-col gap-1">
-                              {mat.is_low_stock && (
+                              {mat.quantity <= 0 ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 w-fit">
+                                  No Stock
+                                </span>
+                              ) : mat.quantity <= Number(mat.raw_material.minimum_threshold) ? (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800 w-fit">
                                   Low Stock
                                 </span>
-                              )}
-                              {mat.quantity <= 0 && (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 w-fit">
-                                  Out of Stock
+                              ) : mat.quantity <= Number(mat.raw_material.reorder_level) ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 w-fit">
+                                  Order Soon
                                 </span>
-                              )}
-                              {!mat.is_low_stock && mat.quantity > 0 && (
+                              ) : (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 w-fit">
                                   In Stock
                                 </span>

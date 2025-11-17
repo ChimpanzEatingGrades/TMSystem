@@ -242,6 +242,7 @@ const ReportsPage = () => {
       materials.map(async (material) => {
         const transactionsRes = await getStockTransactions({
           raw_material_id: material.id,
+          branch_id: branchId, // Add branch_id to filter transactions
         });
         const transactions = transactionsRes.data.filter((t) => {
           const tDate = new Date(t.created_at);
@@ -306,9 +307,11 @@ const ReportsPage = () => {
     }
   };
 
+  // Run on initial load or when recipes are loaded
   useEffect(() => {
-    handleApplyFilters();
-  }, []);
+    // Only run the initial filter apply if recipes have been loaded
+    if (recipes.length > 0) handleApplyFilters();
+  }, [recipes]);
 
   const renderContent = () => {
     if (loading)

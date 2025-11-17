@@ -58,14 +58,14 @@ const SalesCharts = ({ salesOverTime, topProducts, salesByBranch, peakHours }) =
         <div className="bg-white p-6 rounded-lg shadow">
         <h3 className="font-semibold text-lg mb-4">Sales Distribution by Branch</h3>
         <ResponsiveContainer width="100%" height={300}>
-          <PieChart>
+          <PieChart margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
             <Pie
               data={salesByBranch}
               dataKey="total_sales"
               nameKey="branch__name"
               cx="50%"
               cy="50%"
-              outerRadius={110}
+              outerRadius={90}
               label={({ branch__name, percent }) => `${branch__name} ${(percent * 100).toFixed(0)}%`}
             >
               {salesByBranch.map((entry, index) => (

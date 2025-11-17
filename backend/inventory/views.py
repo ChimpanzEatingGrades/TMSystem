@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 from django.contrib.auth import authenticate
 from django.db import models
 from django.utils import timezone
+from .reports import get_sales_report_data
 from decimal import Decimal
 
 from .models import (
@@ -44,6 +45,30 @@ from .serializers import (
     BranchQuantitySerializer,
     MenuItemBranchAvailabilitySerializer,
 )
+
+
+class SalesReportView(APIView):
+    """
+    An endpoint for generating sales reports.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        branch_id = request.query_params.get('branch_id', None)
+
+        if not start_date or not end_date:
+            return Response(
+                {'error': 'start_date and end_date parameters are required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            data = get_sales_report_data(start_date, end_date, branch_id)
+            return Response(data)
+        except Exception as e:
+            return Response({'error': f'Failed to generate sales report: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class VerifyAdminView(APIView):

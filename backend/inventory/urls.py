@@ -15,6 +15,7 @@ from .views import (
     BranchQuantityViewSet,
     MenuItemBranchAvailabilityViewSet,
     VerifyAdminView,
+    SalesReportView,
 )
 from django.conf import settings
 from django.conf.urls.static import static
@@ -36,5 +37,6 @@ router.register(r'menuitem-branch-availability', MenuItemBranchAvailabilityViewS
 
 urlpatterns = [
     path('verify-admin/', VerifyAdminView.as_view(), name='verify-admin'),
+    path('reports/sales/', SalesReportView.as_view(), name='sales-report'),
     path('', include(router.urls)),
 ]

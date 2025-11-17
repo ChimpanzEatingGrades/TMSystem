@@ -50,7 +50,7 @@ const LandingPage = () => {
             {"Authentic Filipino sisig served fresh daily since 2022"}
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button
+            {/* <button
               onClick={() => setShowMenu(true)}
               className="bg-black hover:bg-gray-800 text-white font-bold py-4 px-8 rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg"
             >
@@ -61,7 +61,7 @@ const LandingPage = () => {
               className="bg-white border-2 border-black text-black hover:bg-gray-100 font-bold py-4 px-8 rounded-lg transition-all duration-300 shadow-lg"
             >
               Order Now
-            </a>
+            </a> */}
           </div>
         </div>
       </div>
