@@ -95,10 +95,8 @@ const OrderManagement = () => {
       try {
         const res = await api.get('/inventory/branches/');
         setBranches(res.data);
-        // If no branch selected, default to first branch
-        if (!filters.branch_id && res.data?.length) {
-          setFilters(prev => ({ ...prev, branch_id: String(res.data[0].id) }));
-        }
+        // Default to empty string to show "All Branches"
+        // No auto-selection of first branch
       } catch (e) {
         console.error('Failed to load branches', e);
       }
@@ -116,7 +114,15 @@ const OrderManagement = () => {
   const fetchOrders = async () => {
     try {
       setLoading(true);
-      const response = await getCustomerOrders(filters);
+      // Clean filters: omit empty branch_id so backend doesn't try to filter by ''
+      const cleanedFilters = { ...filters };
+      if (cleanedFilters.branch_id === '') {
+        delete cleanedFilters.branch_id;
+      } else {
+        // Ensure branch_id is sent as a number for exact match
+        cleanedFilters.branch_id = Number(cleanedFilters.branch_id);
+      }
+      const response = await getCustomerOrders(cleanedFilters);
       setOrders(response.data);
       setCurrentPage(1);
     } catch (error) {

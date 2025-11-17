@@ -736,10 +736,15 @@ class CustomerOrderViewSet(viewsets.ModelViewSet):
         """Filter orders based on user permissions and query parameters"""
         queryset = super().get_queryset()
         
-        # Filter by branch if provided
+        # Filter by branch if provided (exact match, exclude nulls)
         branch_id = self.request.query_params.get('branch_id')
         if branch_id:
-            queryset = queryset.filter(branch_id=branch_id)
+            try:
+                branch_id_int = int(branch_id)
+                queryset = queryset.filter(branch_id=branch_id_int)
+            except (ValueError, TypeError):
+                # Invalid branch_id: return no results instead of falling back to all
+                queryset = queryset.none()
         
         # Filter by status if provided
         status = self.request.query_params.get('status')
