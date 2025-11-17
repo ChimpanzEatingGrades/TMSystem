@@ -652,9 +652,13 @@ export default function Inventory() {
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 whitespace-nowrap">
                               Out of Stock
                             </span>
-                          ) : mat.is_low_stock ? (
+                          ) : mat.quantity <= Number(mat.minimum_threshold) ? (
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800 whitespace-nowrap">
                               Low Stock
+                            </span>
+                          ) : mat.quantity <= Number(mat.reorder_level) ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 whitespace-nowrap">
+                              Order Soon
                             </span>
                           ) : (
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 whitespace-nowrap">
