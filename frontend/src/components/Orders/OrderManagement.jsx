@@ -36,6 +36,7 @@ import api from "../../api"; // Keep for branches fetch
 
 const OrderManagement = () => {
   const [orders, setOrders] = useState([]);
+  const [pagination, setPagination] = useState({ count: 0, next: null, previous: null });
   const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -49,6 +50,8 @@ const OrderManagement = () => {
     customer_name: '',
     date_from: '',
     date_to: '',
+    page: 1,
+    page_size: 10,
   });
   const [receiptOrder, setReceiptOrder] = useState(null);
   const [showReceipt, setShowReceipt] = useState(false);
@@ -92,13 +95,18 @@ const OrderManagement = () => {
     const loadBranches = async () => {
       try {
         const res = await api.get('/inventory/branches/');
-        setBranches(res.data);
+        // Ensure branches is always an array
+        let branchList = Array.isArray(res.data)
+          ? res.data
+          : (res.data?.results || []);
+        setBranches(branchList);
         // If no branch selected, default to first branch
-        if (!filters.branch_id && res.data?.length) {
-          setFilters(prev => ({ ...prev, branch_id: String(res.data[0].id) }));
+        if (!filters.branch_id && branchList.length) {
+          setFilters(prev => ({ ...prev, branch_id: String(branchList[0].id) }));
         }
       } catch (e) {
         console.error('Failed to load branches', e);
+        setBranches([]);
       }
     };
     loadBranches();
@@ -115,13 +123,33 @@ const OrderManagement = () => {
     try {
       setLoading(true);
       const response = await getCustomerOrders(filters);
-      setOrders(response.data);
+      // DRF pagination returns { count, next, previous, results }
+      if (response.data && response.data.results !== undefined) {
+        setOrders(response.data.results);
+        setPagination({
+          count: response.data.count,
+          next: response.data.next,
+          previous: response.data.previous
+        });
+      } else {
+        setOrders(response.data);
+        setPagination({ count: response.data.length || 0, next: null, previous: null });
+      }
     } catch (error) {
       console.error('Error fetching orders:', error);
     } finally {
       setLoading(false);
     }
   };
+
+  const handlePageChange = (newPage) => {
+    setFilters(prev => ({ ...prev, page: newPage }));
+  };
+
+  const handlePageSizeChange = (e) => {
+    setFilters(prev => ({ ...prev, page_size: parseInt(e.target.value, 10), page: 1 }));
+  };
+
 
   const fetchStats = async () => {
     try {
@@ -569,6 +597,40 @@ const OrderManagement = () => {
               </p>
             </div>
           )}
+
+          {/* Pagination Controls */}
+          <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-gray-50">
+            <div className="flex items-center gap-2">
+              <span>Rows per page:</span>
+              <select value={filters.page_size} onChange={handlePageSizeChange} className="border rounded px-2 py-1">
+                {[5, 10, 20, 50].map(size => (
+                  <option key={size} value={size}>{size}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handlePageChange(Math.max(1, (filters.page || 1) - 1))}
+                disabled={!pagination.previous}
+                className="px-3 py-1 border rounded disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <span>
+                Page {filters.page || 1} of {Math.ceil((pagination.count || 1) / (filters.page_size || 10))}
+              </span>
+              <button
+                onClick={() => handlePageChange((filters.page || 1) + 1)}
+                disabled={!pagination.next}
+                className="px-3 py-1 border rounded disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+            <div className="text-sm text-gray-500">
+              {pagination.count} total orders
+            </div>
+          </div>
         </div>
       </div>
 
