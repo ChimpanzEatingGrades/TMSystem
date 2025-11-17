@@ -605,6 +605,7 @@ const OrderManagement = () => {
               </p>
             </div>
           )}
+<<<<<<< HEAD
 
           {/* Pagination */}
           {orders.length > 0 && (
@@ -701,6 +702,8 @@ const OrderManagement = () => {
               </div>
             </div>
           )}
+=======
+>>>>>>> parent of 70d257e (orderlist pagination)
         </div>
       </div>
 
