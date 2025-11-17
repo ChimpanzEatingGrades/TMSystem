@@ -15,7 +15,9 @@ import {
   Trash2,
   RefreshCw,
   Printer,
-  X
+  X,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import { useReactToPrint } from 'react-to-print';
 import OrderReceipt from './OrderReceipt';
@@ -36,7 +38,6 @@ import api from "../../api"; // Keep for branches fetch
 
 const OrderManagement = () => {
   const [orders, setOrders] = useState([]);
-  const [pagination, setPagination] = useState({ count: 0, next: null, previous: null });
   const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -50,12 +51,14 @@ const OrderManagement = () => {
     customer_name: '',
     date_from: '',
     date_to: '',
-    page: 1,
-    page_size: 10,
   });
   const [receiptOrder, setReceiptOrder] = useState(null);
   const [showReceipt, setShowReceipt] = useState(false);
   const receiptRef = useRef(null);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const ordersPerPage = 10;
 
   const statusConfig = {
     pending: { 
@@ -95,18 +98,13 @@ const OrderManagement = () => {
     const loadBranches = async () => {
       try {
         const res = await api.get('/inventory/branches/');
-        // Ensure branches is always an array
-        let branchList = Array.isArray(res.data)
-          ? res.data
-          : (res.data?.results || []);
-        setBranches(branchList);
+        setBranches(res.data);
         // If no branch selected, default to first branch
-        if (!filters.branch_id && branchList.length) {
-          setFilters(prev => ({ ...prev, branch_id: String(branchList[0].id) }));
+        if (!filters.branch_id && res.data?.length) {
+          setFilters(prev => ({ ...prev, branch_id: String(res.data[0].id) }));
         }
       } catch (e) {
         console.error('Failed to load branches', e);
-        setBranches([]);
       }
     };
     loadBranches();
@@ -123,33 +121,13 @@ const OrderManagement = () => {
     try {
       setLoading(true);
       const response = await getCustomerOrders(filters);
-      // DRF pagination returns { count, next, previous, results }
-      if (response.data && response.data.results !== undefined) {
-        setOrders(response.data.results);
-        setPagination({
-          count: response.data.count,
-          next: response.data.next,
-          previous: response.data.previous
-        });
-      } else {
-        setOrders(response.data);
-        setPagination({ count: response.data.length || 0, next: null, previous: null });
-      }
+      setOrders(response.data);
     } catch (error) {
       console.error('Error fetching orders:', error);
     } finally {
       setLoading(false);
     }
   };
-
-  const handlePageChange = (newPage) => {
-    setFilters(prev => ({ ...prev, page: newPage }));
-  };
-
-  const handlePageSizeChange = (e) => {
-    setFilters(prev => ({ ...prev, page_size: parseInt(e.target.value, 10), page: 1 }));
-  };
-
 
   const fetchStats = async () => {
     try {
@@ -305,6 +283,34 @@ const OrderManagement = () => {
       handlePrint()
     }
   }
+
+  // Calculate pagination
+  const indexOfLastOrder = currentPage * ordersPerPage;
+  const indexOfFirstOrder = indexOfLastOrder - ordersPerPage;
+  const currentOrders = orders.slice(indexOfFirstOrder, indexOfLastOrder);
+  const totalPages = Math.ceil(orders.length / ordersPerPage);
+
+  const goToPage = (pageNumber) => {
+    setCurrentPage(pageNumber);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const goToPreviousPage = () => {
+    if (currentPage > 1) {
+      goToPage(currentPage - 1);
+    }
+  };
+
+  const goToNextPage = () => {
+    if (currentPage < totalPages) {
+      goToPage(currentPage + 1);
+    }
+  };
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filters]);
 
   if (loading) {
     return (
@@ -477,7 +483,9 @@ const OrderManagement = () => {
         {/* Orders Table */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-            <h3 className="text-lg font-semibold text-gray-900">Orders</h3>
+            <h3 className="text-lg font-semibold text-gray-900">
+              Orders {orders.length > 0 && `(${orders.length} total)`}
+            </h3>
             <button
               onClick={fetchOrders}
               className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-yellow-500"
@@ -519,7 +527,7 @@ const OrderManagement = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {orders.map((order) => {
+                {currentOrders.map((order) => {
                   const StatusIcon = statusConfig[order.status]?.icon || Clock;
                   const statusColor = statusConfig[order.status]?.color || 'bg-gray-100 text-gray-800';
                   const actions = getStatusActions(order.status);
@@ -598,39 +606,101 @@ const OrderManagement = () => {
             </div>
           )}
 
-          {/* Pagination Controls */}
-          <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-gray-50">
-            <div className="flex items-center gap-2">
-              <span>Rows per page:</span>
-              <select value={filters.page_size} onChange={handlePageSizeChange} className="border rounded px-2 py-1">
-                {[5, 10, 20, 50].map(size => (
-                  <option key={size} value={size}>{size}</option>
-                ))}
-              </select>
+          {/* Pagination */}
+          {orders.length > 0 && (
+            <div className="bg-white px-4 py-3 border-t border-gray-200 sm:px-6">
+              <div className="flex items-center justify-between">
+                <div className="flex-1 flex justify-between sm:hidden">
+                  <button
+                    onClick={goToPreviousPage}
+                    disabled={currentPage === 1}
+                    className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    onClick={goToNextPage}
+                    disabled={currentPage === totalPages}
+                    className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
+                </div>
+                <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm text-gray-700">
+                      Showing <span className="font-medium">{indexOfFirstOrder + 1}</span> to{' '}
+                      <span className="font-medium">
+                        {Math.min(indexOfLastOrder, orders.length)}
+                      </span>{' '}
+                      of <span className="font-medium">{orders.length}</span> orders
+                    </p>
+                  </div>
+                  <div>
+                    <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                      <button
+                        onClick={goToPreviousPage}
+                        disabled={currentPage === 1}
+                        className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <span className="sr-only">Previous</span>
+                        <ChevronLeft className="h-5 w-5" />
+                      </button>
+                      
+                      {[...Array(totalPages)].map((_, index) => {
+                        const pageNumber = index + 1;
+                        // Show first page, last page, current page, and pages around current
+                        const showPage = 
+                          pageNumber === 1 || 
+                          pageNumber === totalPages || 
+                          (pageNumber >= currentPage - 1 && pageNumber <= currentPage + 1);
+                        
+                        const showEllipsis = 
+                          (pageNumber === 2 && currentPage > 3) ||
+                          (pageNumber === totalPages - 1 && currentPage < totalPages - 2);
+
+                        if (showEllipsis) {
+                          return (
+                            <span
+                              key={pageNumber}
+                              className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700"
+                            >
+                              ...
+                            </span>
+                          );
+                        }
+
+                        if (!showPage) return null;
+
+                        return (
+                          <button
+                            key={pageNumber}
+                            onClick={() => goToPage(pageNumber)}
+                            className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
+                              currentPage === pageNumber
+                                ? 'z-10 bg-yellow-50 border-yellow-500 text-yellow-600'
+                                : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                            }`}
+                          >
+                            {pageNumber}
+                          </button>
+                        );
+                      })}
+                      
+                      <button
+                        onClick={goToNextPage}
+                        disabled={currentPage === totalPages}
+                        className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <span className="sr-only">Next</span>
+                        <ChevronRight className="h-5 w-5" />
+                      </button>
+                    </nav>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => handlePageChange(Math.max(1, (filters.page || 1) - 1))}
-                disabled={!pagination.previous}
-                className="px-3 py-1 border rounded disabled:opacity-50"
-              >
-                Previous
-              </button>
-              <span>
-                Page {filters.page || 1} of {Math.ceil((pagination.count || 1) / (filters.page_size || 10))}
-              </span>
-              <button
-                onClick={() => handlePageChange((filters.page || 1) + 1)}
-                disabled={!pagination.next}
-                className="px-3 py-1 border rounded disabled:opacity-50"
-              >
-                Next
-              </button>
-            </div>
-            <div className="text-sm text-gray-500">
-              {pagination.count} total orders
-            </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -644,50 +714,119 @@ const OrderManagement = () => {
           }}
           onConfirm={async () => {
             // This function is called by the modal on successful authorization
-            await handleStatusChange(orderToVoid.id, 'cancel', true); // Pass true for isAuthorized
+            await handleStatusChange(orderToVoid.id, 'cancel', true);
             setShowAdminVoidModal(false);
             setOrderToVoid(null);
           }}
         />
       )}
+
       {/* Order Details Modal */}
       {showOrderModal && selectedOrder && (
-        <OrderDetailsModal
-          order={selectedOrder}
-          onClose={() => {
-            setShowOrderModal(false);
-            setSelectedOrder(null);
-          }}
-          onStatusChange={handleStatusChange}
-        />
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white">
+              <h2 className="text-2xl font-bold text-gray-900">Order Details #{selectedOrder.id}</h2>
+              <button
+                onClick={() => setShowOrderModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="p-6">
+              <div className="grid grid-cols-2 gap-6 mb-6">
+                <div>
+                  <h3 className="text-sm font-medium text-gray-500 mb-2">Customer Information</h3>
+                  <p className="text-lg font-semibold text-gray-900">{selectedOrder.customer_name}</p>
+                  <p className="text-sm text-gray-600 mt-1">Order Date: {formatDate(selectedOrder.order_date)}</p>
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium text-gray-500 mb-2">Order Status</h3>
+                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${statusConfig[selectedOrder.status]?.color}`}>
+                    {statusConfig[selectedOrder.status]?.label}
+                  </span>
+                </div>
+              </div>
+
+              {selectedOrder.special_requests && (
+                <div className="mb-6">
+                  <h3 className="text-sm font-medium text-gray-500 mb-2">Special Requests</h3>
+                  <p className="text-gray-900">{selectedOrder.special_requests}</p>
+                </div>
+              )}
+
+              <div className="mb-6">
+                <h3 className="text-sm font-medium text-gray-500 mb-2">Order Items</h3>
+                <div className="bg-gray-50 rounded-lg overflow-hidden">
+                  <table className="min-w-full">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Unit Price</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Subtotal</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {selectedOrder.items?.map((item, index) => (
+                        <tr key={index}>
+                          <td className="px-4 py-3 text-sm text-gray-900">{item.menu_item_name}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900">{item.quantity}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900">{formatCurrency(item.unit_price)}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900">{formatCurrency(item.subtotal)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="border-t border-gray-200 pt-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-lg font-medium text-gray-900">Total Amount:</span>
+                  <span className="text-2xl font-bold text-gray-900">{formatCurrency(selectedOrder.total_amount)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Receipt Modal */}
       {showReceipt && receiptOrder && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-auto relative">
-            <button
-              onClick={() => setShowReceipt(false)}
-              className="absolute top-4 right-4 z-10 p-2 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
-            >
-              <X size={20} />
-            </button>
-            
-            <OrderReceipt ref={receiptRef} order={receiptOrder} />
-            
-            <div className="p-6 border-t border-gray-200 flex gap-3 bg-gray-50">
-              <button
-                onClick={printReceipt}
-                className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors flex items-center justify-center gap-2"
-              >
-                <Printer size={18} />
-                Print Receipt
-              </button>
+          <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-4 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white">
+              <h2 className="text-xl font-bold text-gray-900">Receipt Preview</h2>
               <button
                 onClick={() => setShowReceipt(false)}
-                className="flex-1 px-4 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-semibold transition-colors"
+                className="text-gray-400 hover:text-gray-600"
               >
-                Close
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="p-4">
+              <div ref={receiptRef}>
+                <OrderReceipt order={receiptOrder} />
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-gray-200 flex justify-end gap-2 sticky bottom-0 bg-white">
+              <button
+                onClick={() => setShowReceipt(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={printReceipt}
+                className="px-4 py-2 text-sm font-medium text-white bg-yellow-500 rounded-md hover:bg-yellow-600 flex items-center gap-2"
+              >
+                <Printer className="h-4 w-4" />
+                Print Receipt
               </button>
             </div>
           </div>
@@ -697,558 +836,9 @@ const OrderManagement = () => {
   );
 };
 
-// Create Order Modal Component
-export const CreateOrderModal = ({ 
-  initialOrderState,
-  menuItems,
-  branches,
-  onClose, 
-  onSubmit,
-}) => {
-  const [newOrder, setNewOrder] = useState(initialOrderState || {
-    customer_name: '',
-    special_requests: '',
-    notes: '',
-    branch: '',
-    items: []
-  });
-  const [branchMaterials, setBranchMaterials] = useState([]);
-
-  const addOrderItem = () => {
-    setNewOrder(prev => ({
-      ...prev,
-      items: [...prev.items, { menu_item: '', quantity: 1, special_instructions: '' }]
-    }));
-  };
-
-  const removeOrderItem = (index) => {
-    setNewOrder(prev => ({
-      ...prev,
-      items: prev.items.filter((_, i) => i !== index)
-    }));
-  };
-
-  const updateOrderItem = (index, field, value) => {
-    setNewOrder(prev => ({
-      ...prev,
-      items: prev.items.map((item, i) => 
-        i === index ? { ...item, [field]: value } : item
-      )
-    }));
-  };
-
-  // Fetch raw materials for the selected branch to check stock
-  useEffect(() => {
-    const loadBranchMaterials = async () => {
-      if (newOrder.branch) {
-        try {
-          const res = await getRawMaterials({ branch_id: newOrder.branch });
-          setBranchMaterials(res.data || []);
-        } catch (error) {
-          console.error("Failed to load branch materials for stock check:", error);
-          setBranchMaterials([]); // Clear on error
-        }
-      } else {
-        setBranchMaterials([]); // Clear if no branch is selected
-      }
-    };
-    loadBranchMaterials();
-  }, [newOrder.branch]);
-
-  // Function to check for sufficient ingredients, copied from DigitalMenu
-  const hasSufficientIngredients = (item) => {
-    if (!item.recipe || !item.recipe.items || item.recipe.items.length === 0) {
-      return true; // No recipe, assume it's available
-    }
-
-    for (const recipeItem of item.recipe.items) {
-      const branchMaterial = branchMaterials.find(
-        (m) => m.id === recipeItem.raw_material.id
-      );
-      const availableQuantity = branchMaterial ? parseFloat(branchMaterial.quantity) : 0;
-      const requiredQuantity = (recipeItem.quantity / (item.recipe.yield_quantity || 1));
-
-      if (availableQuantity < requiredQuantity) {
-        return false; // Not enough of this ingredient
-      }
-    }
-    return true; // All ingredients are in stock
-  };
-
-  const calculateOrderTotal = () => {
-    if (!newOrder.branch) return { subtotal: 0, tax: 0, total: 0 };
-
-    const subtotal = newOrder.items.reduce((sum, currentItem) => {
-      const menuItem = menuItems.find(m => m.id === parseInt(currentItem.menu_item));
-      if (!menuItem) return sum;
-
-      const availability = menuItem.branch_availability.find(
-        a => String(a.branch) === String(newOrder.branch)
-      );
-      const price = availability ? parseFloat(availability.price) : 0;
-      return sum + (price * currentItem.quantity);
-    }, 0);
-    
-    const tax = 0;
-    return { subtotal, tax, total: subtotal + tax };
-  };
-
-  const { subtotal, tax, total } = calculateOrderTotal();
-
-  const availableMenuItems = newOrder.branch
-    ? menuItems.filter(item => {
-        const availability = item.branch_availability?.find(
-          a => String(a.branch) === String(newOrder.branch)
-        );
-        return availability && availability.is_active && availability.price != null && hasSufficientIngredients(item);
-      })
-    : [];
-
-  const getPriceForMenuItem = (itemId) => {
-    const item = menuItems.find(m => m.id === parseInt(itemId));
-    return item?.branch_availability?.find(a => String(a.branch) === String(newOrder.branch))?.price || 0;
-  };
-
-  const handleSubmit = async () => {
-    if (!newOrder.customer_name.trim()) {
-      alert('Please enter customer name');
-      return;
-    }
-    if (!newOrder.branch) {
-      alert('Please select a branch');
-      return;
-    }
-    if (newOrder.items.length === 0) {
-      alert('Please add at least one item');
-      return;
-    }
-    await onSubmit(newOrder);
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6">
-          {/* Header */}
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">Create New Order</h2>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-              <XCircle className="h-6 w-6" />
-            </button>
-          </div>
-
-          {/* Customer Information */}
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Customer Information</h3>
-            <div className="grid grid-cols-1 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Customer Name *
-                </label>
-                <input
-                  type="text"
-                  value={newOrder.customer_name}
-                  onChange={(e) => setNewOrder({ ...newOrder, customer_name: e.target.value })}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                  placeholder="Enter customer name"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Branch
-                </label>
-                <select
-                  value={newOrder.branch}
-                  onChange={(e) => setNewOrder({ ...newOrder, branch: e.target.value })}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                >
-                  <option value="">Select branch...</option>
-                  {branches.map((branch) => (
-                    <option key={branch.id} value={branch.id}>
-                      {branch.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Special Requests
-                </label>
-                <textarea
-                  value={newOrder.special_requests}
-                  onChange={(e) => setNewOrder({ ...newOrder, special_requests: e.target.value })}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                  rows="2"
-                  placeholder="Any special requests..."
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Staff Notes
-                </label>
-                <textarea
-                  value={newOrder.notes}
-                  onChange={(e) => setNewOrder({ ...newOrder, notes: e.target.value })}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                  rows="2"
-                  placeholder="Internal notes..."
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Order Items */}
-          <div className="mb-6">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Order Items</h3>
-              <button
-                onClick={addOrderItem}
-                className="px-3 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded-md text-sm flex items-center gap-1"
-              >
-                <Plus className="h-4 w-4" />
-                Add Item
-              </button>
-            </div>
-            
-            <div className="space-y-3">
-              {newOrder.items.map((item, index) => {
-                const unitPrice = getPriceForMenuItem(item.menu_item);
-                const itemTotal = unitPrice * item.quantity;
-                const menuItemFromList = availableMenuItems.find(
-                  (mi) => mi.id === parseInt(item.menu_item)
-                );
-                
-                return (
-                  <div key={index} className="border border-gray-200 rounded-lg p-4">
-                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-                      <div className="md:col-span-5">
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
-                          Menu Item *
-                        </label>
-                        <select
-                          value={item.menu_item}
-                          onChange={(e) => updateOrderItem(index, 'menu_item', e.target.value)}
-                          className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                        >
-                          <option value="">Select item...</option>
-                          {availableMenuItems.map(menuItem => (
-                            <option key={menuItem.id} value={menuItem.id}>
-                              {menuItem.name} - ₱{getPriceForMenuItem(menuItem.id)}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      
-                      <div className="md:col-span-2">
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
-                          Quantity *
-                        </label>
-                        <input
-                          type="number"
-                          min="1"
-                          value={item.quantity}
-                          onChange={(e) => updateOrderItem(index, 'quantity', parseInt(e.target.value) || 1)}
-                          className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                        />
-                      </div>
-                      
-                      <div className="md:col-span-4">
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
-                          Special Instructions
-                        </label>
-                        <input
-                          type="text"
-                          value={item.special_instructions}
-                          onChange={(e) => updateOrderItem(index, 'special_instructions', e.target.value)}
-                          className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                          placeholder="Optional..."
-                        />
-                      </div>
-                      
-                      <div className="md:col-span-1 flex items-end">
-                        <button
-                          onClick={() => removeOrderItem(index)}
-                          className="w-full px-2 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-md text-sm"
-                          title="Remove item"
-                        >
-                          <Trash2 className="h-4 w-4 mx-auto" />
-                        </button>
-                      </div>
-                    </div>
-                    
-                    {menuItemFromList && (
-                      <div className="mt-2 text-sm text-gray-600 text-right">
-                        Item Total: ₱{itemTotal.toFixed(2)}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-              
-              {newOrder.items.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
-                  {newOrder.branch
-                    ? 'No items added. Click "Add Item" to start.'
-                    : 'Please select a branch to see available items.'}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Order Summary */}
-          <div className="border-t border-gray-200 pt-4 mb-6">
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Subtotal:</span>
-                <span className="font-medium">₱{subtotal.toFixed(2)}</span>
-              </div>
-              
-              <div className="flex justify-between text-lg font-bold border-t border-gray-200 pt-2">
-                <span>Total:</span>
-                <span>₱{total.toFixed(2)}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex justify-end space-x-3">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSubmit}
-              className="px-4 py-2 text-sm font-medium text-white bg-yellow-500 rounded-md hover:bg-yellow-600"
-            >
-              Create Order
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// Order Details Modal Component
-const OrderDetailsModal = ({ order, onClose, onStatusChange }) => {
-  const statusConfig = {
-    pending: { color: 'bg-yellow-100 text-yellow-800', icon: Clock },
-    confirmed: { color: 'bg-blue-100 text-blue-800', icon: CheckCircle },
-    preparing: { color: 'bg-orange-100 text-orange-800', icon: ChefHat },
-    ready: { color: 'bg-green-100 text-green-800', icon: Package },
-    completed: { color: 'bg-emerald-100 text-emerald-800', icon: CheckCircle },
-    cancelled: { color: 'bg-red-100 text-red-800', icon: XCircle }
-  };
-
-  const StatusIcon = statusConfig[order.status]?.icon || Clock;
-  const statusColor = statusConfig[order.status]?.color || 'bg-gray-100 text-gray-800';
-
-  const getStatusActions = (status) => {
-    switch (status) {
-      case 'pending':
-        return [
-          { action: 'confirm', label: 'Confirm Order', color: 'bg-blue-500 hover:bg-blue-600' },
-          { action: 'cancel', label: 'Cancel Order', color: 'bg-red-500 hover:bg-red-600' }
-        ];
-      case 'confirmed':
-        return [
-          { action: 'start_preparing', label: 'Start Preparing', color: 'bg-orange-500 hover:bg-orange-600' },
-          { action: 'cancel', label: 'Cancel Order', color: 'bg-red-500 hover:bg-red-600' }
-        ];
-      case 'preparing':
-        return [
-          { action: 'mark_ready', label: 'Mark as Ready', color: 'bg-green-500 hover:bg-green-600' },
-          { action: 'cancel', label: 'Cancel Order', color: 'bg-red-500 hover:bg-red-600' }
-        ];
-      case 'ready':
-        return [
-          { action: 'complete', label: 'Complete Order', color: 'bg-emerald-500 hover:bg-emerald-600' }
-        ];
-      default:
-        return [];
-    }
-  };
-
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-PH', {
-      style: 'currency',
-      currency: 'PHP'
-    }).format(amount);
-  };
-
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleString();
-  };
-
-  const actions = getStatusActions(order.status);
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6">
-          {/* Header */}
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">
-              Order #{order.id} Details
-            </h2>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              <XCircle className="h-6 w-6" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Order Information */}
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Order Information</h3>
-                
-                <div className="space-y-3">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Customer:</span>
-                    <span className="font-medium">{order.customer_name}</span>
-                  </div>
-
-                  {order.branch_name && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Branch:</span>
-                      <span className="font-medium">{order.branch_name}</span>
-                    </div>
-                  )}
-                  
-                  {order.customer_phone && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Phone:</span>
-                      <span className="font-medium">{order.customer_phone}</span>
-                    </div>
-                  )}
-                  
-                  {order.customer_email && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Email:</span>
-                      <span className="font-medium">{order.customer_email}</span>
-                    </div>
-                  )}
-                  
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Status:</span>
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColor}`}>
-                      <StatusIcon className="h-3 w-3 mr-1" />
-                      {order.status_display}
-                    </span>
-                  </div>
-                  
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Order Date:</span>
-                    <span className="font-medium">{formatDate(order.order_date)}</span>
-                  </div>
-                  
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Total Amount:</span>
-                    <span className="font-bold text-lg">{formatCurrency(order.total_amount)}</span>
-                  </div>
-                </div>
-              </div>
-
-              {order.special_requests && (
-                <div>
-                  <h4 className="text-sm font-medium text-gray-900 mb-2">Special Requests</h4>
-                  <p className="text-gray-600 text-sm bg-gray-50 p-3 rounded-md">
-                    {order.special_requests}
-                  </p>
-                </div>
-              )}
-
-              {order.notes && (
-                <div>
-                  <h4 className="text-sm font-medium text-gray-900 mb-2">Staff Notes</h4>
-                  <p className="text-gray-600 text-sm bg-gray-50 p-3 rounded-md">
-                    {order.notes}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Order Items */}
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Order Items</h3>
-              
-              <div className="space-y-3">
-                {order.items?.map((item) => (
-                  <div key={item.id} className="border border-gray-200 rounded-lg p-4">
-                    <div className="flex justify-between items-start mb-2">
-                      <h4 className="font-medium text-gray-900">{item.menu_item_name}</h4>
-                      <span className="text-sm font-medium text-gray-900">
-                        {formatCurrency(item.total_price)}
-                      </span>
-                    </div>
-                    
-                    <div className="flex justify-between text-sm text-gray-600 mb-2">
-                      <span>Quantity: {item.quantity}</span>
-                      <span>Price: {formatCurrency(item.unit_price)} each</span>
-                    </div>
-                    
-                    {item.special_instructions && (
-                      <p className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
-                        <strong>Special Instructions:</strong> {item.special_instructions}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* Order Summary */}
-              <div className="mt-6 border-t border-gray-200 pt-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Subtotal:</span>
-                    <span className="font-medium">{formatCurrency(order.subtotal)}</span>
-                  </div>
-                  
-                  {order.tax_amount > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Tax:</span>
-                      <span className="font-medium">{formatCurrency(order.tax_amount)}</span>
-                    </div>
-                  )}
-                  
-                  <div className="flex justify-between text-lg font-bold border-t border-gray-200 pt-2">
-                    <span>Total:</span>
-                    <span>{formatCurrency(order.total_amount)}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Action Buttons */}
-          {actions.length > 0 && (
-            <div className="mt-8 flex justify-end space-x-3">
-              {actions.map((action) => (
-                <button
-                  key={action.action}
-                  onClick={() => {
-                    onStatusChange(order.id, action.action);
-                    onClose();
-                  }}
-                  className={`px-4 py-2 text-sm font-medium text-white rounded-md ${action.color}`}
-                >
-                  {action.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
-
 export default OrderManagement;
+
+// CreateOrderModal Component
+export const CreateOrderModal = ({ initialOrderState, menuItems, branches, onClose, onSubmit }) => {
+  // ...existing CreateOrderModal code...
+};
